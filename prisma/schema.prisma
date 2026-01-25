@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model School {
+  id                  String   @id @default(uuid())
+  name                String
+  address             String?
+  phone               String?
+  email               String?
+  webhookSecretIn     String   @default(uuid())
+  webhookSecretOut    String   @default(uuid())
+  lateThresholdMinutes Int     @default(15)
+  absenceCutoffTime   String   @default("10:00")
+  timezone            String   @default("Asia/Tashkent")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  users               User[]
+  classes             Class[]
+  students            Student[]
+  devices             Device[]
+  attendanceEvents    AttendanceEvent[]
+  dailyAttendances    DailyAttendance[]
+  holidays            Holiday[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(SCHOOL_ADMIN)
+  schoolId  String?  
+  school    School?  @relation(fields: [schoolId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  TEACHER
+}
+
+model Class {
+  id         String   @id @default(uuid())
+  name       String
+  gradeLevel Int
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id])
+  startTime  String
+  endTime    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  students   Student[]
+}
+
+model Student {
+  id                 String   @id @default(uuid())
+  deviceStudentId    String?  // the ID registered in Hikvision device
+  name               String
+  schoolId           String
+  school             School   @relation(fields: [schoolId], references: [id])
+  classId            String?
+  class              Class?   @relation(fields: [classId], references: [id])
+  parentPhone        String?
+  parentName         String?
+  photoUrl           String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  attendanceEvents   AttendanceEvent[]
+  dailyAttendances   DailyAttendance[]
+}
+
+model Device {
+  id         String   @id @default(uuid())
+  name       String
+  deviceId   String   @unique
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id])
+  type       DeviceType
+  location   String?
+  isActive   Boolean  @default(true)
+  lastSeenAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  attendanceEvents AttendanceEvent[]
+}
+
+enum DeviceType {
+  ENTRANCE
+  EXIT
+}
+
+model AttendanceEvent {
+  id         String   @id @default(uuid())
+  studentId  String?
+  student    Student? @relation(fields: [studentId], references: [id])
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id])
+  deviceId   String?
+  device     Device?  @relation(fields: [deviceId], references: [id])
+  eventType  EventType
+  timestamp  DateTime
+  rawPayload Json
+  createdAt  DateTime @default(now())
+}
+
+enum EventType {
+  IN
+  OUT
+}
+
+model DailyAttendance {
+  id                  String   @id @default(uuid())
+  studentId           String
+  student             Student  @relation(fields: [studentId], references: [id])
+  schoolId            String
+  school              School   @relation(fields: [schoolId], references: [id])
+  date                DateTime
+  status              AttendanceStatus
+  firstScanTime       DateTime?
+  lastScanTime        DateTime?
+  lateMinutes         Int?
+  totalTimeOnPremises Int?
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([studentId, date])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  EXCUSED
+}
+
+model Holiday {
+  id        String   @id @default(uuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  date      DateTime
+  name      String
+  createdAt DateTime @default(now())
+}
