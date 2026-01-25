@@ -24,26 +24,16 @@ const JWT_SECRET = process.env.JWT_SECRET || "secret";
 
 const server = Fastify({ logger: true });
 
-server.register(fastifyJwt, { secret: JWT_SECRET });
-
-// Log all incoming requests before multipart processing
-server.addHook("onRequest", (request, reply, done) => {
-  if (request.url.includes("/webhook")) {
-    console.log("=== RAW WEBHOOK REQUEST ===");
-    console.log("URL:", request.url);
-    console.log("Method:", request.method);
-    console.log("Content-Type:", request.headers["content-type"]);
-    console.log("All Headers:", JSON.stringify(request.headers, null, 2));
-    console.log("===========================");
-  }
-  done();
+server.register(require("@fastify/cors"), {
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  exposedHeaders: ["Content-Disposition"],
+  credentials: true,
 });
 
 server.register(multipart, { addToBody: true });
-server.register(require("@fastify/cors"), {
-  origin: "*", // Allow all origins for dev
-  methods: ["GET", "POST", "PUT", "DELETE"],
-});
+server.register(fastifyJwt, { secret: JWT_SECRET });
 
 server.register(fastifyStatic, {
   root: path.join(__dirname, "uploads"),

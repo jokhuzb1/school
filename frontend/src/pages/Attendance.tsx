@@ -10,7 +10,8 @@ import {
   Row,
   Col,
   Statistic,
-  message,
+  message as antdMessage,
+  App,
 } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import { useSchool } from "../hooks/useSchool";
@@ -19,12 +20,18 @@ import { classesService } from "../services/classes";
 import type { DailyAttendance, Class, AttendanceStatus } from "../types";
 import dayjs from "dayjs";
 
+const { RangePicker } = DatePicker;
+
 const Attendance: React.FC = () => {
+  const { message } = App.useApp();
   const { schoolId } = useSchool();
   const [records, setRecords] = useState<DailyAttendance[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
-  const [date, setDate] = useState(dayjs());
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
+    dayjs(),
+    dayjs(),
+  ]);
   const [classFilter, setClassFilter] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
 
@@ -32,10 +39,27 @@ const Attendance: React.FC = () => {
     if (!schoolId) return;
     setLoading(true);
     try {
-      const data = await attendanceService.getToday(schoolId, {
-        classId: classFilter,
-        status: statusFilter,
-      });
+      let data: DailyAttendance[];
+      const isToday =
+        dateRange[0].isSame(dayjs(), "day") &&
+        dateRange[1].isSame(dayjs(), "day");
+
+      if (isToday && !classFilter && !statusFilter) {
+        data = await attendanceService.getToday(schoolId, {
+          classId: classFilter,
+          status: statusFilter,
+        });
+      } else {
+        data = await attendanceService.getReport(schoolId, {
+          startDate: dateRange[0].format("YYYY-MM-DD"),
+          endDate: dateRange[1].format("YYYY-MM-DD"),
+          classId: classFilter,
+        });
+        // Frontend filtering of status since getReport might not support it
+        if (statusFilter) {
+          data = data.filter((r) => r.status === statusFilter);
+        }
+      }
       setRecords(data);
     } catch (err) {
       console.error(err);
@@ -57,7 +81,7 @@ const Attendance: React.FC = () => {
   useEffect(() => {
     fetchData();
     fetchClasses();
-  }, [schoolId, classFilter, statusFilter]);
+  }, [schoolId, dateRange, classFilter, statusFilter]);
 
   const handleStatusChange = async (id: string, status: AttendanceStatus) => {
     try {
@@ -66,6 +90,28 @@ const Attendance: React.FC = () => {
       fetchData();
     } catch (err) {
       message.error("Failed to update");
+    }
+  };
+
+  const handleExport = async () => {
+    if (!schoolId) return;
+    try {
+      const blob = await attendanceService.exportExcel(schoolId, {
+        startDate: dateRange[0].format("YYYY-MM-DD"),
+        endDate: dateRange[1].format("YYYY-MM-DD"),
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `attendance-${dateRange[0].format("YYYY-MM-DD")}-${dateRange[1].format("YYYY-MM-DD")}.xlsx`,
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      message.error("Failed to export Excel");
     }
   };
 
@@ -145,7 +191,7 @@ const Attendance: React.FC = () => {
             <Statistic
               title="Present"
               value={stats.present}
-              valueStyle={{ color: "#52c41a" }}
+              styles={{ content: { color: "#52c41a" } }}
             />
           </Card>
         </Col>
@@ -154,7 +200,7 @@ const Attendance: React.FC = () => {
             <Statistic
               title="Late"
               value={stats.late}
-              valueStyle={{ color: "#faad14" }}
+              styles={{ content: { color: "#faad14" } }}
             />
           </Card>
         </Col>
@@ -163,14 +209,19 @@ const Attendance: React.FC = () => {
             <Statistic
               title="Absent"
               value={stats.absent}
-              valueStyle={{ color: "#ff4d4f" }}
+              styles={{ content: { color: "#ff4d4f" } }}
             />
           </Card>
         </Col>
       </Row>
 
       <Space style={{ marginBottom: 16, flexWrap: "wrap" }} size="middle">
-        <DatePicker value={date} onChange={(d) => d && setDate(d)} />
+        <RangePicker
+          value={dateRange}
+          onChange={(values) =>
+            values && setDateRange([values[0]!, values[1]!])
+          }
+        />
         <Select
           placeholder="Filter by class"
           value={classFilter}
@@ -192,7 +243,9 @@ const Attendance: React.FC = () => {
             { value: "EXCUSED", label: "Excused" },
           ]}
         />
-        <Button icon={<DownloadOutlined />}>Export</Button>
+        <Button icon={<DownloadOutlined />} onClick={handleExport}>
+          Export
+        </Button>
       </Space>
 
       <Table

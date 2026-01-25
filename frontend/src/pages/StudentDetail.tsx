@@ -164,7 +164,7 @@ const StudentDetail: React.FC = () => {
             <Statistic
               title="Present"
               value={stats.present}
-              valueStyle={{ color: "#52c41a" }}
+              styles={{ content: { color: "#52c41a" } }}
             />
           </Card>
         </Col>
@@ -173,7 +173,7 @@ const StudentDetail: React.FC = () => {
             <Statistic
               title="Late"
               value={stats.late}
-              valueStyle={{ color: "#faad14" }}
+              styles={{ content: { color: "#faad14" } }}
             />
           </Card>
         </Col>
@@ -182,7 +182,7 @@ const StudentDetail: React.FC = () => {
             <Statistic
               title="Absent"
               value={stats.absent}
-              valueStyle={{ color: "#ff4d4f" }}
+              styles={{ content: { color: "#ff4d4f" } }}
             />
           </Card>
         </Col>

@@ -98,7 +98,7 @@ const Dashboard: React.FC = () => {
               title="Total Students"
               value={stats.totalStudents}
               prefix={<TeamOutlined style={{ color: "#1890ff" }} />}
-              valueStyle={{ color: "#1890ff" }}
+              styles={{ content: { color: "#1890ff" } }}
             />
           </Card>
         </Col>
@@ -109,7 +109,7 @@ const Dashboard: React.FC = () => {
               value={stats.presentToday}
               suffix={`(${stats.presentPercentage}%)`}
               prefix={<CheckCircleOutlined style={{ color: "#52c41a" }} />}
-              valueStyle={{ color: "#52c41a" }}
+              styles={{ content: { color: "#52c41a" } }}
             />
           </Card>
         </Col>
@@ -119,7 +119,7 @@ const Dashboard: React.FC = () => {
               title="Late Today"
               value={stats.lateToday}
               prefix={<ClockCircleOutlined style={{ color: "#faad14" }} />}
-              valueStyle={{ color: "#faad14" }}
+              styles={{ content: { color: "#faad14" } }}
             />
           </Card>
         </Col>
@@ -129,7 +129,7 @@ const Dashboard: React.FC = () => {
               title="Absent Today"
               value={stats.absentToday}
               prefix={<CloseCircleOutlined style={{ color: "#ff4d4f" }} />}
-              valueStyle={{ color: "#ff4d4f" }}
+              styles={{ content: { color: "#ff4d4f" } }}
             />
           </Card>
         </Col>

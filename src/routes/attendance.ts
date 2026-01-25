@@ -30,18 +30,61 @@ export default async function (fastify: FastifyInstance) {
     },
   );
 
+  fastify.get(
+    "/schools/:schoolId/attendance/report",
+    { preHandler: [(fastify as any).authenticate] } as any,
+    async (request: any) => {
+      const { schoolId } = request.params;
+      const { startDate, endDate, classId } = request.query;
+      const fromDate = new Date(`${startDate}T00:00:00Z`);
+      const toDate = new Date(`${endDate}T23:59:59Z`);
+
+      const where: any = {
+        schoolId,
+        date: { gte: fromDate, lte: toDate },
+      };
+
+      if (classId) {
+        where.student = { classId };
+      }
+
+      const records = await prisma.dailyAttendance.findMany({
+        where,
+        include: {
+          student: {
+            include: {
+              class: true,
+            },
+          },
+        },
+        orderBy: { date: "desc" },
+      });
+      return records;
+    },
+  );
+
   fastify.post(
     "/schools/:schoolId/attendance/export",
     { preHandler: [(fastify as any).authenticate] } as any,
     async (request: any, reply) => {
       const { schoolId } = request.params;
-      const { from, to } = request.body;
-      const fromDate = new Date(from);
-      const toDate = new Date(to);
+      const { startDate, endDate } = request.body;
+      const fromDate = new Date(`${startDate}T00:00:00Z`);
+      const toDate = new Date(`${endDate}T23:59:59Z`);
+
+      console.log("DEBUG EXPORT PARAMS:", {
+        startDate,
+        endDate,
+        fromDate: fromDate.toISOString(),
+        toDate: toDate.toISOString(),
+      });
+
       const records = await prisma.dailyAttendance.findMany({
         where: { schoolId, date: { gte: fromDate, lte: toDate } },
         include: { student: true },
       });
+
+      console.log(`DEBUG EXPORT: Found ${records.length} records`);
 
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("Attendance");
@@ -66,8 +109,9 @@ export default async function (fastify: FastifyInstance) {
         "Content-Disposition",
         'attachment; filename="attendance.xlsx"',
       );
-      await wb.xlsx.write(reply.raw);
-      reply.sent = true;
+
+      const buffer = await wb.xlsx.writeBuffer();
+      return reply.send(buffer);
     },
   );
 
