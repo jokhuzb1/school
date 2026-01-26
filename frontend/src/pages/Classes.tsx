@@ -1,26 +1,23 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Table, Button, Modal, Form, Input, Select, TimePicker, Popconfirm, Tag, Progress, Row, Col, Typography, Space, Tooltip, App } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, UserOutlined, TeamOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Form, Input, Select, TimePicker, Tag, Progress, Typography, Space, Tooltip, App } from 'antd';
+import { PlusOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, UserOutlined, TeamOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { useSchool } from '../hooks/useSchool';
 import { classesService } from '../services/classes';
-import { studentsService } from '../services/students';
 import { PageHeader, Divider } from '../components';
 import { StatItem } from '../components/StatItem';
-import type { Class, Student } from '../types';
-import dayjs from 'dayjs';
+import type { Class } from '../types';
 
 const { Text } = Typography;
 
 const Classes: React.FC = () => {
     const { schoolId } = useSchool();
     const { message } = App.useApp();
+    const navigate = useNavigate();
     const [classes, setClasses] = useState<Class[]>([]);
     const [loading, setLoading] = useState(true);
     const [modalOpen, setModalOpen] = useState(false);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [form] = Form.useForm();
-    const [expandedData, setExpandedData] = useState<Record<string, Student[]>>({});
-    const [loadingStudents, setLoadingStudents] = useState<string | null>(null);
+    const [form] = Form.useForm<{ name: string; gradeLevel: number; startTime: any; endTime: any }>();
 
     const fetchClasses = async () => {
         if (!schoolId) return;
@@ -49,29 +46,8 @@ const Classes: React.FC = () => {
     }, [classes]);
 
     const handleAdd = () => {
-        setEditingId(null);
         form.resetFields();
         setModalOpen(true);
-    };
-
-    const handleEdit = (record: Class) => {
-        setEditingId(record.id);
-        form.setFieldsValue({
-            ...record,
-            startTime: record.startTime ? dayjs(record.startTime, 'HH:mm') : null,
-            endTime: record.endTime ? dayjs(record.endTime, 'HH:mm') : null,
-        });
-        setModalOpen(true);
-    };
-
-    const handleDelete = async (id: string) => {
-        try {
-            await classesService.delete(id);
-            message.success('Sinf o\'chirildi');
-            fetchClasses();
-        } catch (err) {
-            message.error('O\'chirishda xatolik');
-        }
     };
 
     const handleSubmit = async (values: any) => {
@@ -81,32 +57,12 @@ const Classes: React.FC = () => {
             endTime: values.endTime?.format('HH:mm'),
         };
         try {
-            if (editingId) {
-                await classesService.update(editingId, data);
-                message.success('Sinf yangilandi');
-            } else {
-                await classesService.create(schoolId!, data);
-                message.success('Sinf qo\'shildi');
-            }
+            await classesService.create(schoolId!, data);
+            message.success('Sinf qo\'shildi');
             setModalOpen(false);
             fetchClasses();
         } catch (err) {
             message.error('Saqlashda xatolik');
-        }
-    };
-
-    // Expand qilinganda o'quvchilarni yuklash
-    const handleExpand = async (expanded: boolean, record: Class) => {
-        if (expanded && !expandedData[record.id]) {
-            setLoadingStudents(record.id);
-            try {
-                const students = await studentsService.getAll(schoolId!, { classId: record.id });
-                setExpandedData(prev => ({ ...prev, [record.id]: students.data || students }));
-            } catch (err) {
-                console.error('Failed to load students:', err);
-            } finally {
-                setLoadingStudents(null);
-            }
         }
     };
 
@@ -184,79 +140,7 @@ const Classes: React.FC = () => {
                 );
             }
         },
-        {
-            title: '',
-            key: 'actions',
-            width: 100,
-            render: (_: any, record: Class) => (
-                <Space size={4}>
-                    <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEdit(record); }} />
-                    <Popconfirm title="O'chirish?" onConfirm={() => handleDelete(record.id)}>
-                        <Button size="small" icon={<DeleteOutlined />} danger onClick={(e) => e.stopPropagation()} />
-                    </Popconfirm>
-                </Space>
-            ),
-        },
     ];
-
-    // Expandable row - o'quvchilar ro'yxati
-    const expandedRowRender = (record: Class) => {
-        const students = expandedData[record.id] || [];
-        const isLoading = loadingStudents === record.id;
-
-        if (isLoading) {
-            return <div style={{ padding: 16, textAlign: 'center' }}><Text type="secondary">Yuklanmoqda...</Text></div>;
-        }
-
-        if (students.length === 0) {
-            return <div style={{ padding: 16, textAlign: 'center' }}><Text type="secondary">O'quvchilar yo'q</Text></div>;
-        }
-
-        return (
-            <div style={{ padding: '8px 16px' }}>
-                <Row gutter={[8, 8]}>
-                    {students.map((student: Student) => {
-                        const todayAttendance = student.attendance?.[0];
-                        const status = todayAttendance?.status;
-                        
-                        let statusColor = '#d9d9d9';
-                        let statusIcon = <CloseCircleOutlined />;
-                        let statusText = 'Kelmagan';
-                        
-                        if (status === 'PRESENT') {
-                            statusColor = '#52c41a';
-                            statusIcon = <CheckCircleOutlined />;
-                            statusText = todayAttendance?.firstScanTime ? dayjs(todayAttendance.firstScanTime).format('HH:mm') : 'Kelgan';
-                        } else if (status === 'LATE') {
-                            statusColor = '#faad14';
-                            statusIcon = <ClockCircleOutlined />;
-                            statusText = todayAttendance?.firstScanTime ? dayjs(todayAttendance.firstScanTime).format('HH:mm') + ' (kech)' : 'Kech';
-                        }
-
-                        return (
-                            <Col key={student.id} xs={12} sm={8} md={6} lg={4}>
-                                <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: 6,
-                                    padding: '6px 10px',
-                                    background: status === 'PRESENT' ? '#f6ffed' : status === 'LATE' ? '#fffbe6' : '#fff1f0',
-                                    borderRadius: 6,
-                                    borderLeft: `3px solid ${statusColor}`,
-                                }}>
-                                    <span style={{ color: statusColor }}>{statusIcon}</span>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <Text ellipsis style={{ fontSize: 12, display: 'block' }}>{student.name}</Text>
-                                        <Text type="secondary" style={{ fontSize: 10 }}>{statusText}</Text>
-                                    </div>
-                                </div>
-                            </Col>
-                        );
-                    })}
-                </Row>
-            </div>
-        );
-    };
 
     return (
         <div>
@@ -309,16 +193,15 @@ const Classes: React.FC = () => {
                 columns={columns} 
                 rowKey="id" 
                 loading={loading}
-                expandable={{
-                    expandedRowRender,
-                    onExpand: handleExpand,
-                    expandRowByClick: true,
-                }}
                 size="middle"
+                onRow={(record) => ({
+                    onClick: () => navigate(schoolId ? `/schools/${schoolId}/classes/${record.id}` : `/classes/${record.id}`),
+                    style: { cursor: 'pointer' },
+                })}
             />
 
             <Modal
-                title={editingId ? 'Sinfni tahrirlash' : 'Yangi sinf'}
+                title="Yangi sinf"
                 open={modalOpen}
                 onCancel={() => setModalOpen(false)}
                 onOk={() => form.submit()}

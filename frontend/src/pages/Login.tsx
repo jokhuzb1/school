@@ -15,9 +15,15 @@ const Login: React.FC = () => {
     const onFinish = async (values: { email: string; password: string }) => {
         setLoading(true);
         try {
-            await login(values.email, values.password);
+            const user = await login(values.email, values.password);
             message.success('Login successful!');
-            navigate('/dashboard');
+            if (user.role === 'SUPER_ADMIN') {
+                navigate('/dashboard');
+            } else if (user.schoolId) {
+                navigate(`/schools/${user.schoolId}/dashboard`);
+            } else {
+                navigate('/dashboard');
+            }
         } catch (error: any) {
             message.error(error.response?.data?.error || 'Login failed');
         } finally {

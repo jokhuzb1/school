@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import prisma from "../prisma";
 import ExcelJS from "exceljs";
+import { getLocalDateOnly } from "../utils/date";
 
 export default async function (fastify: FastifyInstance) {
   fastify.get(
@@ -8,11 +9,9 @@ export default async function (fastify: FastifyInstance) {
     { preHandler: [(fastify as any).authenticate] } as any,
     async (request: any) => {
       const { schoolId } = request.params;
-      const todayStr = new Date().toLocaleDateString("en-CA");
-      const today = new Date(`${todayStr}T00:00:00Z`);
+      const today = getLocalDateOnly(new Date());
 
       console.log("DEBUG ATTENDANCE LOOKUP:", {
-        todayStr,
         todayIso: today.toISOString(),
         schoolId,
       });

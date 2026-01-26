@@ -4,6 +4,7 @@ import { attendanceEmitter } from "../eventEmitter";
 import { MultipartFile } from "@fastify/multipart";
 import fs from "fs";
 import path from "path";
+import { getLocalDateKey, getLocalDateOnly } from "../utils/date";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
@@ -245,11 +246,10 @@ export default async function (fastify: FastifyInstance) {
         .findUnique({ where: { id: student.classId ?? "" } })
         .catch(() => null);
 
-      // Fix date calculation: use the date from event, but ensure it's treated as start of day in local time/school timezone
-      // Assuming school timezone is same as server timezone for now, or just using simple date string approach to avoid UTC shifts
+      // Use local date key for consistent day grouping
       const eventDate = new Date(dateTime);
-      const dateString = eventDate.toLocaleDateString("en-CA"); // YYYY-MM-DD
-      const dateOnly = new Date(`${dateString}T00:00:00Z`); // Force UTC midnight
+      const dateString = getLocalDateKey(eventDate);
+      const dateOnly = getLocalDateOnly(eventDate);
 
       console.log("DEBUG WEBHOOK DATE:", {
         dateTimeInput: dateTime,
@@ -279,6 +279,21 @@ export default async function (fastify: FastifyInstance) {
         const MIN_SCAN_INTERVAL = 2 * 60 * 1000; // 2 daqiqa
         
         if (eventType === "IN") {
+          if (!existing.firstScanTime && cls) {
+            const [h, m] = cls.startTime.split(":").map(Number);
+            const diff =
+              eventTime.getHours() * 60 +
+              eventTime.getMinutes() -
+              (h * 60 + m);
+            if (diff > school.lateThresholdMinutes) {
+              update.status = "LATE";
+              update.lateMinutes = Math.round(diff - school.lateThresholdMinutes);
+            } else {
+              update.status = "PRESENT";
+              update.lateMinutes = null;
+            }
+          }
+
           // KIRISH
           // Agar allaqachon maktabda bo'lsa va 2 daqiqa ichida yana IN kelsa - ignore
           if (existing.currentlyInSchool && existing.lastInTime) {
@@ -335,13 +350,17 @@ export default async function (fastify: FastifyInstance) {
         
         if (eventType === "IN" && cls) {
           const [h, m] = cls.startTime.split(":").map(Number);
-          const classStart = new Date(dateTime);
-          classStart.setHours(h, m, 0, 0);
-          const diff = (eventTime.getTime() - classStart.getTime()) / 60000;
+          const diff =
+            eventTime.getHours() * 60 +
+            eventTime.getMinutes() -
+            (h * 60 + m);
           if (diff > school.lateThresholdMinutes) {
             status = "LATE";
             lateMinutes = Math.round(diff - school.lateThresholdMinutes);
           }
+        } else if (eventType === "OUT") {
+          status = "PRESENT";
+          lateMinutes = null;
         }
 
         await prisma.dailyAttendance.create({
@@ -357,6 +376,7 @@ export default async function (fastify: FastifyInstance) {
             lastOutTime: eventType === "OUT" ? eventTime : null,
             currentlyInSchool: eventType === "IN",
             scanCount: 1,
+            notes: eventType === "OUT" ? "OUT before first IN" : null,
           },
         });
       }

@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import prisma from "../prisma";
+import { getLocalDateKey, getLocalDateOnly } from "../utils/date";
 
 // SuperAdmin uchun barcha maktablar statistikasi
 export async function adminDashboardRoutes(fastify: FastifyInstance) {
@@ -12,8 +13,7 @@ export async function adminDashboardRoutes(fastify: FastifyInstance) {
         throw { statusCode: 403, message: "Forbidden" };
       }
 
-      const todayStr = new Date().toLocaleDateString("en-CA");
-      const today = new Date(`${todayStr}T00:00:00Z`);
+      const now = new Date();
 
       // Barcha maktablar
       const schools = await prisma.school.findMany({
@@ -25,6 +25,7 @@ export async function adminDashboardRoutes(fastify: FastifyInstance) {
       // Har bir maktab uchun bugungi statistika
       const schoolsWithStats = await Promise.all(
         schools.map(async (school) => {
+          const today = getLocalDateOnly(now);
           const [totalStudents, presentToday, lateToday, absentToday, currentlyInSchool] = await Promise.all([
             prisma.student.count({ where: { schoolId: school.id, isActive: true } }),
             prisma.dailyAttendance.count({ where: { schoolId: school.id, date: today, status: "PRESENT" } }),
@@ -83,10 +84,10 @@ export async function adminDashboardRoutes(fastify: FastifyInstance) {
       // Haftalik trend (barcha maktablar)
       const weeklyStats = [];
       for (let i = 6; i >= 0; i--) {
-        const date = new Date(today);
+        const date = new Date(now);
         date.setDate(date.getDate() - i);
-        const dayStr = date.toLocaleDateString("en-CA");
-        const dayDate = new Date(`${dayStr}T00:00:00Z`);
+        const dayStr = getLocalDateKey(date);
+        const dayDate = getLocalDateOnly(date);
 
         const [present, late, absent] = await Promise.all([
           prisma.dailyAttendance.count({ where: { date: dayDate, status: "PRESENT" } }),
@@ -137,8 +138,8 @@ export default async function (fastify: FastifyInstance) {
       const totalStudents = await prisma.student.count({
         where: studentFilter,
       });
-      const todayStr = new Date().toLocaleDateString("en-CA");
-      const today = new Date(`${todayStr}T00:00:00Z`);
+      const now = new Date();
+      const today = getLocalDateOnly(now);
       const presentToday = await prisma.dailyAttendance.count({
         where: { schoolId, date: today, status: "PRESENT", ...attendanceFilter },
       });
@@ -197,10 +198,10 @@ export default async function (fastify: FastifyInstance) {
       // Weekly stats (last 7 days)
       const weeklyStats = [];
       for (let i = 6; i >= 0; i--) {
-        const d = new Date(today);
+        const d = new Date(now);
         d.setDate(d.getDate() - i);
-        const dayStr = d.toLocaleDateString("en-CA");
-        const dayDate = new Date(`${dayStr}T00:00:00Z`);
+        const dayStr = getLocalDateKey(d);
+        const dayDate = getLocalDateOnly(d);
         
         const present = await prisma.dailyAttendance.count({
           where: { schoolId, date: dayDate, status: { in: ["PRESENT", "LATE"] } },

@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import prisma from '../prisma';
+import { getLocalDateOnly } from '../utils/date';
 
 export default async function (fastify: FastifyInstance) {
   fastify.get('/schools/:schoolId/classes', { preHandler: [(fastify as any).authenticate] } as any, async (request: any, reply) => {
@@ -16,8 +17,7 @@ export default async function (fastify: FastifyInstance) {
     });
 
     // Get today's attendance for each class
-    const todayStr = new Date().toLocaleDateString("en-CA");
-    const today = new Date(`${todayStr}T00:00:00Z`);
+    const today = getLocalDateOnly(new Date());
 
     const classesWithAttendance = await Promise.all(
       classes.map(async (cls) => {

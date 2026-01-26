@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { getLocalDateKey, getLocalDateOnly } from "../src/utils/date";
 
 const prisma = new PrismaClient();
 
@@ -89,6 +90,18 @@ async function main() {
       schoolId: school.id,
       classId: class2.id,
     },
+    {
+      name: "Saidbek",
+      deviceStudentId: "456585",
+      schoolId: school.id,
+      classId: class2.id,
+    },
+    {
+      name: "Axmadxon",
+      deviceStudentId: "484655",
+      schoolId: school.id,
+      classId: class1.id,
+    },
   ];
 
   for (const s of students) {
@@ -107,19 +120,19 @@ async function main() {
 
   // Oxirgi 2 haftalik attendance ma'lumotlari
   console.log("Creating attendance data for last 2 weeks...");
-  
+
   const allStudents = await prisma.student.findMany();
   const today = new Date();
-  
+
   for (let daysAgo = 1; daysAgo <= 14; daysAgo++) {
     const date = new Date(today);
     date.setDate(date.getDate() - daysAgo);
-    date.setHours(0, 0, 0, 0);
-    
+    const dateOnly = getLocalDateOnly(date);
+
     // Dam olish kunlarini o'tkazib yuborish (Shanba=6, Yakshanba=0)
     const dayOfWeek = date.getDay();
     if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-    
+
     for (const student of allStudents) {
       // Tasodifiy holat generatsiya qilish
       const rand = Math.random();
@@ -128,28 +141,46 @@ async function main() {
       let lastOutTime: Date | null = null;
       let lateMinutes: number | null = null;
       let totalTimeOnPremises: number | null = null;
-      
+
       if (rand < 0.7) {
         // 70% - O'z vaqtida kelgan
         status = "PRESENT";
-        firstScanTime = new Date(date);
-        firstScanTime.setHours(7, 30 + Math.floor(Math.random() * 25), Math.floor(Math.random() * 60));
-        
-        lastOutTime = new Date(date);
-        lastOutTime.setHours(14 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 60));
-        
-        totalTimeOnPremises = Math.round((lastOutTime.getTime() - firstScanTime.getTime()) / 60000);
+        firstScanTime = new Date(dateOnly);
+        firstScanTime.setHours(
+          7,
+          30 + Math.floor(Math.random() * 25),
+          Math.floor(Math.random() * 60),
+        );
+
+        lastOutTime = new Date(dateOnly);
+        lastOutTime.setHours(
+          14 + Math.floor(Math.random() * 2),
+          Math.floor(Math.random() * 60),
+        );
+
+        totalTimeOnPremises = Math.round(
+          (lastOutTime.getTime() - firstScanTime.getTime()) / 60000,
+        );
       } else if (rand < 0.85) {
         // 15% - Kech qolgan
         status = "LATE";
-        firstScanTime = new Date(date);
-        firstScanTime.setHours(8, 15 + Math.floor(Math.random() * 45), Math.floor(Math.random() * 60));
+        firstScanTime = new Date(dateOnly);
+        firstScanTime.setHours(
+          8,
+          15 + Math.floor(Math.random() * 45),
+          Math.floor(Math.random() * 60),
+        );
         lateMinutes = Math.floor(Math.random() * 30) + 5;
-        
-        lastOutTime = new Date(date);
-        lastOutTime.setHours(14 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 60));
-        
-        totalTimeOnPremises = Math.round((lastOutTime.getTime() - firstScanTime.getTime()) / 60000);
+
+        lastOutTime = new Date(dateOnly);
+        lastOutTime.setHours(
+          14 + Math.floor(Math.random() * 2),
+          Math.floor(Math.random() * 60),
+        );
+
+        totalTimeOnPremises = Math.round(
+          (lastOutTime.getTime() - firstScanTime.getTime()) / 60000,
+        );
       } else if (rand < 0.95) {
         // 10% - Kelmagan
         status = "ABSENT";
@@ -157,12 +188,12 @@ async function main() {
         // 5% - Sababli
         status = "EXCUSED";
       }
-      
+
       await prisma.dailyAttendance.create({
         data: {
           studentId: student.id,
           schoolId: school.id,
-          date: date,
+          date: dateOnly,
           status,
           firstScanTime,
           lastScanTime: lastOutTime || firstScanTime,
@@ -175,7 +206,7 @@ async function main() {
         },
       });
     }
-    console.log(`Created attendance for ${date.toLocaleDateString()}`);
+    console.log(`Created attendance for ${getLocalDateKey(date)}`);
   }
 
   console.log("Seed completed: All data wiped and re-created.");

@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import prisma from '../prisma';
+import { getLocalDateOnly } from '../utils/date';
 
 export function registerJobs(server: any) {
   // Device health check every 30 minutes
@@ -22,10 +23,8 @@ export function registerJobs(server: any) {
     const now = new Date();
     for (const s of schools) {
       const [h, m] = s.absenceCutoffTime.split(':').map(Number);
-      const tzNow = new Date();
-      if (tzNow.getHours() === h && tzNow.getMinutes() === m) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+      if (now.getHours() === h && now.getMinutes() === m) {
+        const today = getLocalDateOnly(now);
         const holidays = await prisma.holiday.findMany({ where: { schoolId: s.id, date: today } });
         if (holidays.length) continue;
         const students = await prisma.student.findMany({ where: { schoolId: s.id, isActive: true } });

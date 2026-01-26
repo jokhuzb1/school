@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import prisma from "../prisma";
 import ExcelJS from "exceljs";
+import { getLocalDateOnly } from "../utils/date";
 
 export default async function (fastify: FastifyInstance) {
   fastify.get(
@@ -40,8 +41,7 @@ export default async function (fastify: FastifyInstance) {
       ]);
 
       // Get today's attendance for all students
-      const todayStr = new Date().toLocaleDateString("en-CA");
-      const today = new Date(`${todayStr}T00:00:00Z`);
+      const today = getLocalDateOnly(new Date());
       const studentIds = students.map((s) => s.id);
       
       const todayAttendance = await prisma.dailyAttendance.findMany({

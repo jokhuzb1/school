@@ -25,6 +25,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
     }
 
     if (requiredRole && user?.role !== requiredRole && user?.role !== 'SUPER_ADMIN') {
+        if (user?.schoolId) {
+            return <Navigate to={`/schools/${user.schoolId}/dashboard`} replace />;
+        }
         return <Navigate to="/dashboard" replace />;
     }
 
