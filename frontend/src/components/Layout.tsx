@@ -13,7 +13,7 @@ import {
     UserOutlined,
     LogoutOutlined,
 } from '@ant-design/icons';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useSchool } from '../hooks/useSchool';
 
@@ -22,10 +22,15 @@ const { Header, Sider, Content } = AntLayout;
 const Layout: React.FC = () => {
     const [collapsed, setCollapsed] = useState(false);
     const { user, logout } = useAuth();
-    const { schoolId, isSuperAdmin } = useSchool();
+    const { schoolId: contextSchoolId, isSuperAdmin } = useSchool();
     const navigate = useNavigate();
     const location = useLocation();
     const { token: themeToken } = theme.useToken();
+    
+    // URL'dan schoolId ni olish (SuperAdmin maktab panelida bo'lganda)
+    const urlSchoolId = location.pathname.match(/\/schools\/([^\/]+)/)?.[1];
+    const schoolId = urlSchoolId || contextSchoolId;
+    const isViewingSchool = !!urlSchoolId; // SuperAdmin maktab panelini ko'rayaptimi?
 
     const handleLogout = () => {
         logout();
@@ -39,24 +44,33 @@ const Layout: React.FC = () => {
 
     // Menu items based on role
     const getMenuItems = () => {
-        if (isSuperAdmin) {
+        // SuperAdmin o'z panelida (maktab ko'rmayapti)
+        if (isSuperAdmin && !isViewingSchool) {
             return [
                 { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
-                { key: '/schools', icon: <BankOutlined />, label: 'Schools' },
-                { key: '/settings', icon: <SettingOutlined />, label: 'Settings' },
+                { key: '/schools', icon: <BankOutlined />, label: 'Maktablar' },
+                { key: '/settings', icon: <SettingOutlined />, label: 'Sozlamalar' },
             ];
         }
 
+        // Maktab paneli (SuperAdmin yoki oddiy admin)
         const prefix = schoolId ? `/schools/${schoolId}` : '';
-        return [
+        const items = [
             { key: `${prefix}/dashboard`, icon: <DashboardOutlined />, label: 'Dashboard' },
-            { key: `${prefix}/students`, icon: <TeamOutlined />, label: 'Students' },
-            { key: `${prefix}/attendance`, icon: <CalendarOutlined />, label: 'Attendance' },
-            { key: `${prefix}/classes`, icon: <BookOutlined />, label: 'Classes' },
-            { key: `${prefix}/devices`, icon: <ApiOutlined />, label: 'Devices' },
-            { key: `${prefix}/holidays`, icon: <CalendarOutlined />, label: 'Holidays' },
-            { key: `${prefix}/settings`, icon: <SettingOutlined />, label: 'Settings' },
+            { key: `${prefix}/students`, icon: <TeamOutlined />, label: "O'quvchilar" },
+            { key: `${prefix}/attendance`, icon: <CalendarOutlined />, label: 'Davomat' },
+            { key: `${prefix}/classes`, icon: <BookOutlined />, label: 'Sinflar' },
+            { key: `${prefix}/devices`, icon: <ApiOutlined />, label: 'Qurilmalar' },
+            { key: `${prefix}/holidays`, icon: <CalendarOutlined />, label: 'Bayramlar' },
+            { key: `${prefix}/settings`, icon: <SettingOutlined />, label: 'Sozlamalar' },
         ];
+        
+        // SuperAdmin uchun "Orqaga" tugmasi
+        if (isSuperAdmin && isViewingSchool) {
+            items.unshift({ key: '/schools', icon: <BankOutlined />, label: '← Maktablar' });
+        }
+        
+        return items;
     };
 
     return (
@@ -108,7 +122,7 @@ const Layout: React.FC = () => {
                         onClick={() => setCollapsed(!collapsed)}
                     />
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                        <span>{isSuperAdmin ? 'All Schools' : user?.school?.name || 'School'}</span>
+                        <span>{isSuperAdmin && !isViewingSchool ? 'Barcha maktablar' : user?.school?.name || 'Maktab'}</span>
                         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
                             <Avatar icon={<UserOutlined />} style={{ cursor: 'pointer', background: themeToken.colorPrimary }} />
                         </Dropdown>

@@ -9,6 +9,11 @@ export const dashboardService = {
         return response.data;
     },
 
+    async getAdminStats(): Promise<any> {
+        const response = await api.get('/admin/dashboard');
+        return response.data;
+    },
+
     async getRecentEvents(schoolId: string, limit: number = 10): Promise<AttendanceEvent[]> {
         const response = await api.get<AttendanceEvent[]>(`/schools/${schoolId}/events`, { params: { limit } });
         return response.data;

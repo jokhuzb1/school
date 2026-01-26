@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Input, message, Popconfirm } from 'antd';
+import { Table, Button, Modal, Form, Input, message, Popconfirm, Space, Tag, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { schoolsService } from '../services/schools';
@@ -68,22 +68,36 @@ const Schools: React.FC = () => {
     };
 
     const columns = [
-        { title: 'Name', dataIndex: 'name', key: 'name' },
-        { title: 'Address', dataIndex: 'address', key: 'address', render: (a: string) => a || '-' },
-        { title: 'Phone', dataIndex: 'phone', key: 'phone', render: (p: string) => p || '-' },
+        { 
+            title: 'Maktab nomi', 
+            dataIndex: 'name', 
+            key: 'name',
+            render: (name: string, record: School) => (
+                <Space>
+                    <span style={{ fontWeight: 500 }}>{name}</span>
+                    {record._count?.students && (
+                        <Tag color="blue">{record._count.students} o'quvchi</Tag>
+                    )}
+                </Space>
+            )
+        },
+        { title: 'Manzil', dataIndex: 'address', key: 'address', render: (a: string) => a || '-' },
+        { title: 'Telefon', dataIndex: 'phone', key: 'phone', render: (p: string) => p || '-' },
         {
-            title: 'Actions',
+            title: '',
             key: 'actions',
+            width: 100,
             render: (_: any, record: School) => (
-                <>
-                    <Button size="small" onClick={() => navigate(`/schools/${record.id}/dashboard`)} style={{ marginRight: 8 }}>
-                        View
-                    </Button>
-                    <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} style={{ marginRight: 8 }} />
-                    <Popconfirm title="Delete this school?" onConfirm={() => handleDelete(record.id)}>
-                        <Button size="small" icon={<DeleteOutlined />} danger />
+                <Space size={4}>
+                    <Tooltip title="Tahrirlash">
+                        <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEdit(record); }} />
+                    </Tooltip>
+                    <Popconfirm title="O'chirish?" onConfirm={() => handleDelete(record.id)}>
+                        <Tooltip title="O'chirish">
+                            <Button size="small" icon={<DeleteOutlined />} danger onClick={(e) => e.stopPropagation()} />
+                        </Tooltip>
                     </Popconfirm>
-                </>
+                </Space>
             ),
         },
     ];
@@ -91,7 +105,7 @@ const Schools: React.FC = () => {
     return (
         <div>
             <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} style={{ marginBottom: 16 }}>
-                Add School
+                Maktab qo'shish
             </Button>
 
             <Table

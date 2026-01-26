@@ -16,7 +16,7 @@ import studentsRoutes from "./src/routes/students";
 import devicesRoutes from "./src/routes/devices";
 import holidaysRoutes from "./src/routes/holidays";
 import attendanceRoutes from "./src/routes/attendance";
-import dashboardRoutes from "./src/routes/dashboard";
+import dashboardRoutes, { adminDashboardRoutes } from "./src/routes/dashboard";
 import sseRoutes from "./src/routes/sse";
 import { registerJobs } from "./src/cron/jobs";
 
@@ -60,6 +60,7 @@ server.register(devicesRoutes, { prefix: "/" });
 server.register(holidaysRoutes, { prefix: "/" });
 server.register(attendanceRoutes, { prefix: "/" });
 server.register(dashboardRoutes, { prefix: "/" });
+server.register(adminDashboardRoutes, { prefix: "/" });
 server.register(sseRoutes, { prefix: "/" });
 
 const start = async () => {

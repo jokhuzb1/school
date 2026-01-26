@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import Students from './pages/Students';
 import StudentDetail from './pages/StudentDetail';
 import Attendance from './pages/Attendance';
@@ -40,7 +41,7 @@ function App() {
                 }
               >
                 <Route index element={<Navigate to="/dashboard" replace />} />
-                <Route path="dashboard" element={<Dashboard />} />
+                <Route path="dashboard" element={<SuperAdminDashboard />} />
 
                 {/* Super Admin routes */}
                 <Route path="schools" element={<Schools />} />
