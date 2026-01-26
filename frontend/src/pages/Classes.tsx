@@ -1,16 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Input, Select, TimePicker, message, Popconfirm, Tag, Progress, Card, Row, Col, Typography, Space, Tooltip } from 'antd';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Table, Button, Modal, Form, Input, Select, TimePicker, Popconfirm, Tag, Progress, Row, Col, Typography, Space, Tooltip, App } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, UserOutlined, TeamOutlined } from '@ant-design/icons';
 import { useSchool } from '../hooks/useSchool';
 import { classesService } from '../services/classes';
 import { studentsService } from '../services/students';
-import type { Class, Student, DailyAttendance } from '../types';
+import { PageHeader, Divider } from '../components';
+import { StatItem } from '../components/StatItem';
+import type { Class, Student } from '../types';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
 
 const Classes: React.FC = () => {
     const { schoolId } = useSchool();
+    const { message } = App.useApp();
     const [classes, setClasses] = useState<Class[]>([]);
     const [loading, setLoading] = useState(true);
     const [modalOpen, setModalOpen] = useState(false);
@@ -36,6 +39,15 @@ const Classes: React.FC = () => {
         fetchClasses();
     }, [schoolId]);
 
+    // Statistikalar
+    const stats = useMemo(() => {
+        const totalStudents = classes.reduce((sum, c) => sum + (c.totalStudents || c._count?.students || 0), 0);
+        const todayPresent = classes.reduce((sum, c) => sum + (c.todayPresent || 0), 0);
+        const todayLate = classes.reduce((sum, c) => sum + (c.todayLate || 0), 0);
+        const todayAbsent = classes.reduce((sum, c) => sum + (c.todayAbsent || 0), 0);
+        return { total: classes.length, totalStudents, todayPresent, todayLate, todayAbsent };
+    }, [classes]);
+
     const handleAdd = () => {
         setEditingId(null);
         form.resetFields();
@@ -55,10 +67,10 @@ const Classes: React.FC = () => {
     const handleDelete = async (id: string) => {
         try {
             await classesService.delete(id);
-            message.success('Class deleted');
+            message.success('Sinf o\'chirildi');
             fetchClasses();
         } catch (err) {
-            message.error('Failed to delete');
+            message.error('O\'chirishda xatolik');
         }
     };
 
@@ -71,15 +83,15 @@ const Classes: React.FC = () => {
         try {
             if (editingId) {
                 await classesService.update(editingId, data);
-                message.success('Class updated');
+                message.success('Sinf yangilandi');
             } else {
                 await classesService.create(schoolId!, data);
-                message.success('Class created');
+                message.success('Sinf qo\'shildi');
             }
             setModalOpen(false);
             fetchClasses();
         } catch (err) {
-            message.error('Failed to save');
+            message.error('Saqlashda xatolik');
         }
     };
 
@@ -248,9 +260,49 @@ const Classes: React.FC = () => {
 
     return (
         <div>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} style={{ marginBottom: 16 }}>
-                Sinf qo'shish
-            </Button>
+            {/* Kompakt Header - Dashboard uslubida */}
+            <PageHeader>
+                <StatItem 
+                    icon={<TeamOutlined />} 
+                    value={stats.total} 
+                    label="sinf" 
+                    color="#722ed1"
+                    tooltip="Jami sinflar"
+                />
+                <StatItem 
+                    icon={<UserOutlined />} 
+                    value={stats.totalStudents} 
+                    label="o'quvchi" 
+                    color="#1890ff"
+                    tooltip="Jami o'quvchilar"
+                />
+                <Divider />
+                <StatItem 
+                    icon={<CheckCircleOutlined />} 
+                    value={stats.todayPresent} 
+                    label="kelgan" 
+                    color="#52c41a"
+                    tooltip="Bugun kelganlar"
+                />
+                <StatItem 
+                    icon={<ClockCircleOutlined />} 
+                    value={stats.todayLate} 
+                    label="kech" 
+                    color="#faad14"
+                    tooltip="Kech qolganlar"
+                />
+                <StatItem 
+                    icon={<CloseCircleOutlined />} 
+                    value={stats.todayAbsent} 
+                    label="yo'q" 
+                    color="#ff4d4f"
+                    tooltip="Kelmaganlar"
+                />
+                <Divider />
+                <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleAdd}>
+                    Sinf qo'shish
+                </Button>
+            </PageHeader>
 
             <Table 
                 dataSource={classes} 
@@ -266,23 +318,28 @@ const Classes: React.FC = () => {
             />
 
             <Modal
-                title={editingId ? 'Edit Class' : 'Add Class'}
+                title={editingId ? 'Sinfni tahrirlash' : 'Yangi sinf'}
                 open={modalOpen}
                 onCancel={() => setModalOpen(false)}
                 onOk={() => form.submit()}
+                okText="Saqlash"
+                cancelText="Bekor"
             >
                 <Form form={form} layout="vertical" onFinish={handleSubmit}>
-                    <Form.Item name="name" label="Name" rules={[{ required: true }]}>
-                        <Input placeholder="e.g., 1A" />
+                    <Form.Item name="name" label="Sinf nomi" rules={[{ required: true, message: 'Nomni kiriting' }]}>
+                        <Input placeholder="Masalan: 1A, 5B" />
                     </Form.Item>
-                    <Form.Item name="gradeLevel" label="Grade Level" rules={[{ required: true }]}>
-                        <Select options={[...Array(12)].map((_, i) => ({ value: i + 1, label: `Grade ${i + 1}` }))} />
+                    <Form.Item name="gradeLevel" label="Sinf darajasi" rules={[{ required: true, message: 'Darajani tanlang' }]}>
+                        <Select 
+                            placeholder="Tanlang"
+                            options={[...Array(12)].map((_, i) => ({ value: i + 1, label: `${i + 1}-sinf` }))} 
+                        />
                     </Form.Item>
-                    <Form.Item name="startTime" label="Start Time" rules={[{ required: true }]}>
-                        <TimePicker format="HH:mm" />
+                    <Form.Item name="startTime" label="Dars boshlanish vaqti" rules={[{ required: true, message: 'Vaqtni tanlang' }]}>
+                        <TimePicker format="HH:mm" placeholder="08:00" />
                     </Form.Item>
-                    <Form.Item name="endTime" label="End Time">
-                        <TimePicker format="HH:mm" />
+                    <Form.Item name="endTime" label="Dars tugash vaqti">
+                        <TimePicker format="HH:mm" placeholder="14:00" />
                     </Form.Item>
                 </Form>
             </Modal>

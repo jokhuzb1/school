@@ -23,6 +23,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from "recharts";
 import { useParams } from "react-router-dom";
 import { useAttendanceSSE } from "../hooks/useAttendanceSSE";
 import { studentsService } from "../services/students";
+import { getAssetUrl } from "../config";
 import type { Student, DailyAttendance, AttendanceStatus, AttendanceEvent } from "../types";
 import dayjs, { Dayjs } from "dayjs";
 
@@ -34,8 +35,6 @@ const statusColors: Record<AttendanceStatus, string> = {
   ABSENT: "red",
   EXCUSED: "gray",
 };
-
-const COLORS = ["#52c41a", "#faad14", "#ff4d4f", "#8c8c8c"];
 
 const StudentDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -204,7 +203,7 @@ const StudentDetail: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Avatar
                 size={48}
-                src={student.photoUrl ? `http://localhost:4000/${student.photoUrl}` : undefined}
+                src={getAssetUrl(student.photoUrl)}
                 icon={<UserOutlined />}
               />
               <div>

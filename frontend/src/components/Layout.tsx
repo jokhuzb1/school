@@ -13,7 +13,7 @@ import {
     UserOutlined,
     LogoutOutlined,
 } from '@ant-design/icons';
-import { Outlet, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useSchool } from '../hooks/useSchool';
 

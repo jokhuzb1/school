@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Table,
   Button,
@@ -7,10 +7,11 @@ import {
   Space,
   Tag,
   Avatar,
-  message,
   Modal,
   Form,
   Popconfirm,
+  App,
+  Typography,
 } from "antd";
 import {
   PlusOutlined,
@@ -19,15 +20,25 @@ import {
   DownloadOutlined,
   UserOutlined,
   DeleteOutlined,
+  TeamOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CloseCircleOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useSchool } from "../hooks/useSchool";
 import { studentsService } from "../services/students";
 import { classesService } from "../services/classes";
+import { PageHeader, Divider } from "../components";
+import { StatItem } from "../components/StatItem";
+import { getAssetUrl, DEFAULT_PAGE_SIZE } from "../config";
 import type { Student, Class } from "../types";
+
+const { Text } = Typography;
 
 const Students: React.FC = () => {
   const { schoolId } = useSchool();
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -73,6 +84,14 @@ const Students: React.FC = () => {
     fetchClasses();
   }, [schoolId, page, search, classFilter]);
 
+  // Statistikalar
+  const stats = useMemo(() => {
+    const present = students.filter(s => s.todayStatus === 'PRESENT').length;
+    const late = students.filter(s => s.todayStatus === 'LATE').length;
+    const absent = students.filter(s => s.todayStatus === 'ABSENT').length;
+    return { total, present, late, absent };
+  }, [students, total]);
+
   const handleAdd = () => {
     setEditingId(null);
     form.resetFields();
@@ -89,15 +108,15 @@ const Students: React.FC = () => {
     try {
       if (editingId) {
         await studentsService.update(editingId, values);
-        message.success("Student updated");
+        message.success("O'quvchi yangilandi");
       } else {
         await studentsService.create(schoolId!, values);
-        message.success("Student created");
+        message.success("O'quvchi qo'shildi");
       }
       setModalOpen(false);
       fetchStudents();
     } catch (err) {
-      message.error("Failed to save student");
+      message.error("Saqlashda xatolik");
     }
   };
 
@@ -112,9 +131,9 @@ const Students: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      message.success("Export successful");
+      message.success("Export muvaffaqiyatli");
     } catch (err) {
-      message.error("Failed to export students");
+      message.error("Export xatolik");
     }
   };
 
@@ -122,13 +141,13 @@ const Students: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file || !schoolId) return;
 
-    const hide = message.loading("Importing students...", 0);
+    const hide = message.loading("Import qilinmoqda...", 0);
     try {
       const result = await studentsService.importExcel(schoolId, file);
-      message.success(`Successfully imported ${result.imported} students`);
+      message.success(`${result.imported} ta o'quvchi import qilindi`);
       fetchStudents();
     } catch (err) {
-      message.error("Failed to import students. Please check the file format.");
+      message.error("Import xatolik. Fayl formatini tekshiring.");
     } finally {
       hide();
       e.target.value = ""; // Reset input
@@ -137,62 +156,77 @@ const Students: React.FC = () => {
 
   const columns = [
     {
-      title: "Photo",
+      title: "",
       dataIndex: "photoUrl",
       key: "photo",
-      width: 60,
+      width: 50,
       render: (url: string) => (
         <Avatar
-          src={url ? `http://localhost:4000/${url}` : undefined}
+          src={getAssetUrl(url)}
           icon={<UserOutlined />}
+          size="small"
         />
       ),
     },
-    { title: "ID", dataIndex: "deviceStudentId", key: "id", width: 80 },
-    { title: "Name", dataIndex: "name", key: "name" },
-    {
-      title: "Class",
-      dataIndex: "class",
-      key: "class",
-      render: (cls: Class | undefined) => cls?.name || "-",
+    { 
+      title: "ID", 
+      dataIndex: "deviceStudentId", 
+      key: "id", 
+      width: 70,
+      render: (id: string) => <Text type="secondary" style={{ fontSize: 11 }}>{id || '-'}</Text>
+    },
+    { 
+      title: "Ism", 
+      dataIndex: "name", 
+      key: "name",
+      render: (name: string) => <Text strong>{name}</Text>
     },
     {
-      title: "Status",
+      title: "Sinf",
+      dataIndex: "class",
+      key: "class",
+      width: 80,
+      render: (cls: Class | undefined) => cls?.name ? <Tag>{cls.name}</Tag> : <Text type="secondary">-</Text>,
+    },
+    {
+      title: "Bugungi holat",
       key: "status",
+      width: 140,
       render: (_: any, record: Student) => {
         if (!record.todayStatus) {
           return <Tag color="default">—</Tag>;
         }
-        const statusConfig: Record<string, { color: string; text: string }> = {
-          PRESENT: { color: "green", text: "Kelgan" },
-          LATE: { color: "orange", text: "Kech" },
-          ABSENT: { color: "red", text: "Kelmagan" },
-          EXCUSED: { color: "gray", text: "Excused" },
+        const statusConfig: Record<string, { color: string; text: string; icon: React.ReactNode }> = {
+          PRESENT: { color: "green", text: "Kelgan", icon: <CheckCircleOutlined /> },
+          LATE: { color: "orange", text: "Kech", icon: <ClockCircleOutlined /> },
+          ABSENT: { color: "red", text: "Kelmagan", icon: <CloseCircleOutlined /> },
+          EXCUSED: { color: "gray", text: "Sababli", icon: null },
         };
-        const config = statusConfig[record.todayStatus] || { color: "default", text: record.todayStatus };
+        const config = statusConfig[record.todayStatus] || { color: "default", text: record.todayStatus, icon: null };
         const time = record.todayFirstScan 
           ? new Date(record.todayFirstScan).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })
           : "";
         return (
-          <Tag color={config.color}>
+          <Tag color={config.color} icon={config.icon}>
             {config.text} {time && `(${time})`}
           </Tag>
         );
       },
     },
     {
-      title: "Actions",
+      title: "",
       key: "actions",
+      width: 120,
       render: (_: any, record: Student) => (
-        <Space>
+        <Space size={4}>
           <Button
             size="small"
-            onClick={() => navigate(`/students/${record.id}`)}
+            onClick={(e) => { e.stopPropagation(); navigate(`/students/${record.id}`); }}
           >
-            View
+            Ko'rish
           </Button>
-          <Button size="small" onClick={() => handleEdit(record)}>
-            Edit
+          <Button size="small" onClick={(e) => { e.stopPropagation(); handleEdit(record); }}>
+            Tahrir
           </Button>
           <Popconfirm
             title="O'quvchini o'chirish?"
@@ -209,7 +243,7 @@ const Students: React.FC = () => {
             okText="Ha"
             cancelText="Yo'q"
           >
-            <Button size="small" danger icon={<DeleteOutlined />} />
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
           </Popconfirm>
         </Space>
       ),
@@ -218,25 +252,58 @@ const Students: React.FC = () => {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16, flexWrap: "wrap" }} size="middle">
+      {/* Kompakt Header - Dashboard uslubida */}
+      <PageHeader>
+        <StatItem 
+          icon={<TeamOutlined />} 
+          value={stats.total} 
+          label="jami" 
+          color="#1890ff"
+          tooltip="Jami o'quvchilar"
+        />
+        <Divider />
+        <StatItem 
+          icon={<CheckCircleOutlined />} 
+          value={stats.present} 
+          label="kelgan" 
+          color="#52c41a"
+          tooltip="Bugun kelganlar"
+        />
+        <StatItem 
+          icon={<ClockCircleOutlined />} 
+          value={stats.late} 
+          label="kech" 
+          color="#faad14"
+          tooltip="Kech qolganlar"
+        />
+        <StatItem 
+          icon={<CloseCircleOutlined />} 
+          value={stats.absent} 
+          label="yo'q" 
+          color="#ff4d4f"
+          tooltip="Kelmaganlar"
+        />
+        <Divider />
         <Input
-          placeholder="Search students..."
+          placeholder="Qidirish..."
           prefix={<SearchOutlined />}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ width: 200 }}
+          style={{ width: 160 }}
           allowClear
+          size="small"
         />
         <Select
-          placeholder="Filter by class"
+          placeholder="Sinf"
           value={classFilter}
           onChange={setClassFilter}
-          style={{ width: 150 }}
+          style={{ width: 100 }}
           allowClear
+          size="small"
           options={classes.map((c) => ({ label: c.name, value: c.id }))}
         />
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-          Add Student
+        <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleAdd}>
+          Qo'shish
         </Button>
         <div style={{ display: "inline-block" }}>
           <input
@@ -248,27 +315,30 @@ const Students: React.FC = () => {
           />
           <Button
             icon={<UploadOutlined />}
+            size="small"
             onClick={() => document.getElementById("import-excel")?.click()}
           >
-            Import Excel
+            Import
           </Button>
         </div>
-        <Button icon={<DownloadOutlined />} onClick={handleExport}>
+        <Button icon={<DownloadOutlined />} size="small" onClick={handleExport}>
           Export
         </Button>
-      </Space>
+      </PageHeader>
 
       <Table
         dataSource={students}
         columns={columns}
         rowKey="id"
         loading={loading}
+        size="middle"
         pagination={{
           current: page,
           total,
-          pageSize: 50,
+          pageSize: DEFAULT_PAGE_SIZE,
           onChange: setPage,
           showSizeChanger: false,
+          showTotal: (total) => `Jami: ${total}`,
         }}
         onRow={(record) => ({
           onClick: () => navigate(`/students/${record.id}`),
@@ -277,28 +347,31 @@ const Students: React.FC = () => {
       />
 
       <Modal
-        title={editingId ? "Edit Student" : "Add Student"}
+        title={editingId ? "O'quvchini tahrirlash" : "Yangi o'quvchi"}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}
+        okText="Saqlash"
+        cancelText="Bekor"
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
-          <Form.Item name="deviceStudentId" label="Device Student ID">
-            <Input />
+          <Form.Item name="deviceStudentId" label="Device ID (qurilmadagi)">
+            <Input placeholder="Qurilmadagi o'quvchi ID" />
           </Form.Item>
-          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
-            <Input />
+          <Form.Item name="name" label="Ism familiya" rules={[{ required: true, message: "Ismni kiriting" }]}>
+            <Input placeholder="Masalan: Aliyev Ali" />
           </Form.Item>
-          <Form.Item name="classId" label="Class">
+          <Form.Item name="classId" label="Sinf">
             <Select
+              placeholder="Sinfni tanlang"
               options={classes.map((c) => ({ label: c.name, value: c.id }))}
             />
           </Form.Item>
-          <Form.Item name="parentName" label="Parent Name">
-            <Input />
+          <Form.Item name="parentName" label="Ota-ona ismi">
+            <Input placeholder="Masalan: Aliyev Vali" />
           </Form.Item>
-          <Form.Item name="parentPhone" label="Parent Phone">
-            <Input />
+          <Form.Item name="parentPhone" label="Telefon raqami">
+            <Input placeholder="+998 XX XXX XX XX" />
           </Form.Item>
         </Form>
       </Modal>

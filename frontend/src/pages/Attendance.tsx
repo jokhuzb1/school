@@ -21,6 +21,7 @@ import { useAttendanceSSE } from "../hooks/useAttendanceSSE";
 import { attendanceService } from "../services/attendance";
 import { classesService } from "../services/classes";
 import type { DailyAttendance, Class, AttendanceStatus } from "../types";
+import { getAssetUrl } from "../config";
 import dayjs from "dayjs";
 
 const { RangePicker } = DatePicker;
@@ -157,7 +158,7 @@ const Attendance: React.FC = () => {
       render: (url: string) =>
         url ? (
           <img
-            src={`http://localhost:4000/${url}`}
+            src={getAssetUrl(url)}
             alt="student"
             style={{
               width: 40,

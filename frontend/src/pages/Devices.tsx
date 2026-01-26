@@ -1,9 +1,22 @@
-import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Input, Select, Card, Typography, message, Popconfirm, Tag } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, CopyOutlined } from '@ant-design/icons';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Table, Button, Modal, Form, Input, Select, Card, Typography, Popconfirm, Tag, App, Row, Col, Space, Tooltip } from 'antd';
+import { 
+    PlusOutlined, 
+    DeleteOutlined, 
+    EditOutlined, 
+    CopyOutlined, 
+    ApiOutlined,
+    CheckCircleOutlined,
+    CloseCircleOutlined,
+    LoginOutlined,
+    LogoutOutlined,
+    EnvironmentOutlined,
+} from '@ant-design/icons';
 import { useSchool } from '../hooks/useSchool';
 import { devicesService } from '../services/devices';
 import { schoolsService } from '../services/schools';
+import { PageHeader, Divider } from '../components';
+import { StatItem } from '../components/StatItem';
 import type { Device } from '../types';
 import dayjs from 'dayjs';
 
@@ -11,6 +24,7 @@ const { Text } = Typography;
 
 const Devices: React.FC = () => {
     const { schoolId } = useSchool();
+    const { message } = App.useApp();
     const [devices, setDevices] = useState<Device[]>([]);
     const [webhookInfo, setWebhookInfo] = useState<{ inUrl: string; outUrl: string } | null>(null);
     const [loading, setLoading] = useState(true);
@@ -46,9 +60,17 @@ const Devices: React.FC = () => {
         fetchWebhookInfo();
     }, [schoolId]);
 
+    // Statistikalar
+    const stats = useMemo(() => {
+        const online = devices.filter(d => d.lastSeenAt && dayjs().diff(dayjs(d.lastSeenAt), 'hour') < 2).length;
+        const entrance = devices.filter(d => d.type === 'ENTRANCE').length;
+        const exit = devices.filter(d => d.type === 'EXIT').length;
+        return { total: devices.length, online, offline: devices.length - online, entrance, exit };
+    }, [devices]);
+
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
-        message.success('Copied to clipboard');
+        message.success('Nusxalandi!');
     };
 
     const handleAdd = () => {
@@ -66,10 +88,10 @@ const Devices: React.FC = () => {
     const handleDelete = async (id: string) => {
         try {
             await devicesService.delete(id);
-            message.success('Device deleted');
+            message.success('Qurilma o\'chirildi');
             fetchDevices();
         } catch (err) {
-            message.error('Failed to delete');
+            message.error('O\'chirishda xatolik');
         }
     };
 
@@ -77,98 +99,232 @@ const Devices: React.FC = () => {
         try {
             if (editingId) {
                 await devicesService.update(editingId, values);
-                message.success('Device updated');
+                message.success('Qurilma yangilandi');
             } else {
                 await devicesService.create(schoolId!, values);
-                message.success('Device created');
+                message.success('Qurilma qo\'shildi');
             }
             setModalOpen(false);
             fetchDevices();
         } catch (err) {
-            message.error('Failed to save');
+            message.error('Saqlashda xatolik');
         }
     };
 
     const columns = [
-        { title: 'Name', dataIndex: 'name', key: 'name' },
-        { title: 'Device ID', dataIndex: 'deviceId', key: 'deviceId' },
+        { 
+            title: 'Nomi', 
+            dataIndex: 'name', 
+            key: 'name',
+            render: (name: string, record: Device) => (
+                <Space>
+                    <Text strong>{name}</Text>
+                    {record.location && (
+                        <Tooltip title={record.location}>
+                            <EnvironmentOutlined style={{ color: '#8c8c8c' }} />
+                        </Tooltip>
+                    )}
+                </Space>
+            )
+        },
+        { 
+            title: 'Device ID', 
+            dataIndex: 'deviceId', 
+            key: 'deviceId',
+            render: (id: string) => <Text copyable={{ text: id }} style={{ fontSize: 12 }}>{id}</Text>
+        },
         {
-            title: 'Type',
+            title: 'Turi',
             dataIndex: 'type',
             key: 'type',
-            render: (t: string) => <Tag color={t === 'ENTRANCE' ? 'green' : 'blue'}>{t}</Tag>,
+            width: 100,
+            render: (t: string) => (
+                <Tag 
+                    icon={t === 'ENTRANCE' ? <LoginOutlined /> : <LogoutOutlined />} 
+                    color={t === 'ENTRANCE' ? 'success' : 'processing'}
+                >
+                    {t === 'ENTRANCE' ? 'Kirish' : 'Chiqish'}
+                </Tag>
+            ),
         },
         {
-            title: 'Status',
+            title: 'Holat',
             key: 'status',
+            width: 100,
             render: (_: any, record: Device) => {
                 const isOnline = record.lastSeenAt && dayjs().diff(dayjs(record.lastSeenAt), 'hour') < 2;
-                return <Tag color={isOnline ? 'green' : 'red'}>{isOnline ? 'Online' : 'Offline'}</Tag>;
+                return (
+                    <Tag 
+                        icon={isOnline ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
+                        color={isOnline ? 'success' : 'error'}
+                    >
+                        {isOnline ? 'Online' : 'Offline'}
+                    </Tag>
+                );
             },
         },
-        { title: 'Last Seen', dataIndex: 'lastSeenAt', key: 'lastSeen', render: (t: string) => t ? dayjs(t).format('MMM DD HH:mm') : '-' },
+        { 
+            title: 'Oxirgi faoliyat', 
+            dataIndex: 'lastSeenAt', 
+            key: 'lastSeen', 
+            render: (t: string) => t ? (
+                <Tooltip title={dayjs(t).format('DD MMM YYYY, HH:mm:ss')}>
+                    <Text type="secondary">{dayjs(t).format('DD MMM HH:mm')}</Text>
+                </Tooltip>
+            ) : <Text type="secondary">-</Text>
+        },
         {
-            title: 'Actions',
+            title: '',
             key: 'actions',
+            width: 80,
             render: (_: any, record: Device) => (
-                <>
-                    <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} style={{ marginRight: 8 }} />
-                    <Popconfirm title="Delete this device?" onConfirm={() => handleDelete(record.id)}>
-                        <Button size="small" icon={<DeleteOutlined />} danger />
+                <Space size={4}>
+                    <Tooltip title="Tahrirlash">
+                        <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEdit(record); }} />
+                    </Tooltip>
+                    <Popconfirm title="Qurilmani o'chirish?" onConfirm={() => handleDelete(record.id)} okText="Ha" cancelText="Yo'q">
+                        <Tooltip title="O'chirish">
+                            <Button size="small" icon={<DeleteOutlined />} danger onClick={(e) => e.stopPropagation()} />
+                        </Tooltip>
                     </Popconfirm>
-                </>
+                </Space>
             ),
         },
     ];
 
     return (
         <div>
-            {webhookInfo && (
-                <Card title="Webhook Configuration" style={{ marginBottom: 16 }}>
-                    <div style={{ marginBottom: 8 }}>
-                        <Text strong>Entrance Webhook URL:</Text>
-                        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                            <Input value={webhookInfo.inUrl} readOnly style={{ flex: 1 }} />
-                            <Button icon={<CopyOutlined />} onClick={() => copyToClipboard(webhookInfo.inUrl)} />
-                        </div>
-                    </div>
-                    <div>
-                        <Text strong>Exit Webhook URL:</Text>
-                        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                            <Input value={webhookInfo.outUrl} readOnly style={{ flex: 1 }} />
-                            <Button icon={<CopyOutlined />} onClick={() => copyToClipboard(webhookInfo.outUrl)} />
-                        </div>
-                    </div>
-                    <Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
-                        Configure these URLs in your Hikvision device HTTP Listening settings.
-                    </Text>
-                </Card>
-            )}
+            {/* Kompakt Header - Dashboard uslubida */}
+            <PageHeader>
+                <StatItem 
+                    icon={<ApiOutlined />} 
+                    value={stats.total} 
+                    label="jami" 
+                    color="#1890ff"
+                    tooltip="Jami qurilmalar"
+                />
+                <Divider />
+                <StatItem 
+                    icon={<CheckCircleOutlined />} 
+                    value={stats.online} 
+                    label="online" 
+                    color="#52c41a"
+                    tooltip="Online qurilmalar"
+                />
+                <StatItem 
+                    icon={<CloseCircleOutlined />} 
+                    value={stats.offline} 
+                    label="offline" 
+                    color="#ff4d4f"
+                    tooltip="Offline qurilmalar"
+                />
+                <Divider />
+                <StatItem 
+                    icon={<LoginOutlined />} 
+                    value={stats.entrance} 
+                    label="kirish" 
+                    color="#52c41a"
+                    tooltip="Kirish qurilmalari"
+                />
+                <StatItem 
+                    icon={<LogoutOutlined />} 
+                    value={stats.exit} 
+                    label="chiqish" 
+                    color="#1890ff"
+                    tooltip="Chiqish qurilmalari"
+                />
+            </PageHeader>
 
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} style={{ marginBottom: 16 }}>
-                Add Device
-            </Button>
+            <Row gutter={[12, 12]}>
+                {/* Webhook konfiguratsiya */}
+                <Col xs={24} lg={8}>
+                    <Card 
+                        title={<><ApiOutlined /> Webhook URL</>} 
+                        size="small"
+                        styles={{ body: { padding: 12 } }}
+                    >
+                        {webhookInfo ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div>
+                                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                                        <LoginOutlined style={{ color: '#52c41a' }} /> Kirish webhook:
+                                    </Text>
+                                    <Input.Group compact>
+                                        <Input value={webhookInfo.inUrl} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
+                                        <Tooltip title="Nusxalash">
+                                            <Button icon={<CopyOutlined />} size="small" onClick={() => copyToClipboard(webhookInfo.inUrl)} />
+                                        </Tooltip>
+                                    </Input.Group>
+                                </div>
+                                <div>
+                                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                                        <LogoutOutlined style={{ color: '#1890ff' }} /> Chiqish webhook:
+                                    </Text>
+                                    <Input.Group compact>
+                                        <Input value={webhookInfo.outUrl} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
+                                        <Tooltip title="Nusxalash">
+                                            <Button icon={<CopyOutlined />} size="small" onClick={() => copyToClipboard(webhookInfo.outUrl)} />
+                                        </Tooltip>
+                                    </Input.Group>
+                                </div>
+                                <Text type="secondary" style={{ fontSize: 10 }}>
+                                    Bu URL'larni Hikvision qurilmangizning HTTP Listening sozlamalariga kiriting.
+                                </Text>
+                            </div>
+                        ) : (
+                            <Text type="secondary">Yuklanmoqda...</Text>
+                        )}
+                    </Card>
+                </Col>
 
-            <Table dataSource={devices} columns={columns} rowKey="id" loading={loading} />
+                {/* Qurilmalar jadvali */}
+                <Col xs={24} lg={16}>
+                    <Card 
+                        title="Qurilmalar ro'yxati"
+                        size="small"
+                        extra={
+                            <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleAdd}>
+                                Qo'shish
+                            </Button>
+                        }
+                    >
+                        <Table 
+                            dataSource={devices} 
+                            columns={columns} 
+                            rowKey="id" 
+                            loading={loading}
+                            size="small"
+                            pagination={false}
+                        />
+                    </Card>
+                </Col>
+            </Row>
 
             <Modal
-                title={editingId ? 'Edit Device' : 'Add Device'}
+                title={editingId ? 'Qurilmani tahrirlash' : 'Yangi qurilma'}
                 open={modalOpen}
                 onCancel={() => setModalOpen(false)}
                 onOk={() => form.submit()}
+                okText="Saqlash"
+                cancelText="Bekor"
             >
                 <Form form={form} layout="vertical" onFinish={handleSubmit}>
-                    <Form.Item name="name" label="Device Name" rules={[{ required: true }]}>
-                        <Input />
+                    <Form.Item name="name" label="Qurilma nomi" rules={[{ required: true, message: 'Nomni kiriting' }]}>
+                        <Input placeholder="Masalan: Asosiy kirish" />
                     </Form.Item>
-                    <Form.Item name="deviceId" label="Device ID (from Hikvision)" rules={[{ required: true }]}>
-                        <Input />
+                    <Form.Item name="deviceId" label="Device ID (Hikvision'dan)" rules={[{ required: true, message: 'Device ID kiriting' }]}>
+                        <Input placeholder="Qurilmadagi ID" />
                     </Form.Item>
-                    <Form.Item name="type" label="Type" rules={[{ required: true }]}>
-                        <Select options={[{ value: 'ENTRANCE', label: 'Entrance' }, { value: 'EXIT', label: 'Exit' }]} />
+                    <Form.Item name="type" label="Turi" rules={[{ required: true, message: 'Turini tanlang' }]}>
+                        <Select 
+                            options={[
+                                { value: 'ENTRANCE', label: '🚪 Kirish (ENTRANCE)' }, 
+                                { value: 'EXIT', label: '🚶 Chiqish (EXIT)' }
+                            ]} 
+                        />
                     </Form.Item>
-                    <Form.Item name="location" label="Location">
-                        <Input />
+                    <Form.Item name="location" label="Joylashuvi">
+                        <Input placeholder="Masalan: 1-qavat, asosiy kirish" />
                     </Form.Item>
                 </Form>
             </Modal>

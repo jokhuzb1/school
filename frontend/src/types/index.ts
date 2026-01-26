@@ -24,6 +24,19 @@ export interface School {
     timezone: string;
     createdAt: string;
     updatedAt: string;
+    // Statistika
+    _count?: {
+        students: number;
+        classes: number;
+        devices: number;
+    };
+    // Bugungi davomat
+    todayStats?: {
+        present: number;
+        late: number;
+        absent: number;
+        attendancePercent: number;
+    };
 }
 
 // User
@@ -49,7 +62,10 @@ export interface Class {
     createdAt: string;
     updatedAt: string;
     _count?: { students: number };
+    // Bugungi davomat statistikasi
     todayPresent?: number;
+    todayLate?: number;
+    todayAbsent?: number;
     totalStudents?: number;
 }
 
@@ -70,6 +86,8 @@ export interface Student {
     // Today's attendance (populated by list endpoint)
     todayStatus?: AttendanceStatus | null;
     todayFirstScan?: string | null;
+    // Expanded attendance (populated when fetching with attendance)
+    attendance?: DailyAttendance[];
 }
 
 // Device
