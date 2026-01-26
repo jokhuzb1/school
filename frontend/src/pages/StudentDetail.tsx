@@ -5,10 +5,8 @@ import {
   Col,
   Avatar,
   Typography,
-  Statistic,
   Table,
   Tag,
-  Calendar,
   Badge,
   Spin,
   Empty,
@@ -17,8 +15,10 @@ import {
   Select,
   Space,
   Modal,
+  Button,
+  Calendar,
 } from "antd";
-import { UserOutlined, WifiOutlined, LoginOutlined, LogoutOutlined, ClockCircleOutlined } from "@ant-design/icons";
+import { UserOutlined, LoginOutlined, LogoutOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, CalendarOutlined } from "@ant-design/icons";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from "recharts";
 import { useParams } from "react-router-dom";
 import { useAttendanceSSE } from "../hooks/useAttendanceSSE";
@@ -34,6 +34,8 @@ const statusColors: Record<AttendanceStatus, string> = {
   ABSENT: "red",
   EXCUSED: "gray",
 };
+
+const COLORS = ["#52c41a", "#faad14", "#ff4d4f", "#8c8c8c"];
 
 const StudentDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -115,6 +117,7 @@ const StudentDetail: React.FC = () => {
     avgLateMinutes,
   };
 
+  // Kalendar uchun
   const attendanceMap = new Map(
     attendance.map((a) => [dayjs(a.date).format("YYYY-MM-DD"), a]),
   );
@@ -193,117 +196,99 @@ const StudentDetail: React.FC = () => {
 
   return (
     <div>
-      {/* Connection Status Indicator */}
-      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Tooltip title={isConnected ? 'Real-time ulangan' : 'Real-time ulanish yo\'q'}>
-          <Badge
-            status={isConnected ? 'success' : 'error'}
-            text={
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-                <WifiOutlined style={{ color: isConnected ? '#52c41a' : '#ff4d4f' }} />
-                {isConnected ? 'Live' : 'Offline'}
-              </span>
-            }
-          />
-        </Tooltip>
-      </div>
-
-      <Card style={{ marginBottom: 16 }}>
-        <Row gutter={24} align="middle">
-          <Col>
-            <Avatar
-              size={80}
-              src={
-                student.photoUrl
-                  ? `http://localhost:4000/${student.photoUrl}`
-                  : undefined
-              }
-              icon={<UserOutlined />}
-            />
+      {/* Kompakt Header: Student Info + Statistikalar */}
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Row gutter={16} align="middle" wrap={false} style={{ overflowX: 'auto' }}>
+          {/* Avatar va Ism */}
+          <Col flex="none">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Avatar
+                size={48}
+                src={student.photoUrl ? `http://localhost:4000/${student.photoUrl}` : undefined}
+                icon={<UserOutlined />}
+              />
+              <div>
+                <Title level={5} style={{ margin: 0 }}>{student.name}</Title>
+                <Space size={4}>
+                  <Tag color="blue">{student.class?.name || "Sinf yo'q"}</Tag>
+                  <Tooltip title={isConnected ? 'Real-time ulangan' : 'Offline'}>
+                    <Badge status={isConnected ? 'success' : 'error'} />
+                  </Tooltip>
+                </Space>
+              </div>
+            </div>
           </Col>
-          <Col>
-            <Title level={3} style={{ margin: 0 }}>
-              {student.name}
-            </Title>
-            <Text type="secondary">{student.class?.name || "No class"}</Text>
-            <br />
-            <Text>ID: {student.deviceStudentId || "-"}</Text>
-            <br />
-            <Text>
-              Parent: {student.parentName || "-"} ({student.parentPhone || "-"})
-            </Text>
+          
+          {/* Divider */}
+          <Col flex="none">
+            <div style={{ width: 1, height: 40, background: '#f0f0f0', margin: '0 8px' }} />
+          </Col>
+
+          {/* Statistikalar */}
+          <Col flex="auto">
+            <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Tooltip title="Jami kunlar">
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 600 }}>{stats.total}</div>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Jami</Text>
+                </div>
+              </Tooltip>
+              <Tooltip title="Kelgan">
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: '#52c41a' }}>{stats.present}</div>
+                  <Text type="secondary" style={{ fontSize: 11 }}><CheckCircleOutlined /> Kelgan</Text>
+                </div>
+              </Tooltip>
+              <Tooltip title="Kech qolgan">
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: '#faad14' }}>{stats.late}</div>
+                  <Text type="secondary" style={{ fontSize: 11 }}><ClockCircleOutlined /> Kech</Text>
+                </div>
+              </Tooltip>
+              <Tooltip title="Kelmagan">
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: '#ff4d4f' }}>{stats.absent}</div>
+                  <Text type="secondary" style={{ fontSize: 11 }}><CloseCircleOutlined /> Yo'q</Text>
+                </div>
+              </Tooltip>
+              <Tooltip title="Sababli">
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: '#8c8c8c' }}>{stats.excused}</div>
+                  <Text type="secondary" style={{ fontSize: 11 }}><ExclamationCircleOutlined /> Sababli</Text>
+                </div>
+              </Tooltip>
+              <Tooltip title="O'rtacha maktabda vaqt">
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: '#722ed1' }}>{formatDuration(avgTimePerDay)}</div>
+                  <Text type="secondary" style={{ fontSize: 11 }}>O'rtacha</Text>
+                </div>
+              </Tooltip>
+              {stats.late > 0 && (
+                <Tooltip title={`${stats.late} marta kech kelgan`}>
+                  <Tag color="orange" style={{ margin: 0 }}>
+                    ⏰ ~{stats.avgLateMinutes} daq kechikish
+                  </Tag>
+                </Tooltip>
+              )}
+            </div>
+          </Col>
+
+          {/* Qo'shimcha info */}
+          <Col flex="none">
+            <Tooltip title={`ID: ${student.deviceStudentId || '-'} | ${student.parentName || '-'}: ${student.parentPhone || '-'}`}>
+              <Button type="text" size="small" icon={<UserOutlined />}>Info</Button>
+            </Tooltip>
           </Col>
         </Row>
       </Card>
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} sm={4}>
-          <Card size="small">
-            <Statistic title="Jami kunlar" value={stats.total} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={4}>
-          <Card size="small">
-            <Statistic
-              title="Kelgan"
-              value={stats.present}
-              styles={{ content: { color: "#52c41a" } }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={4}>
-          <Card size="small">
-            <Statistic
-              title="Kech qolgan"
-              value={stats.late}
-              styles={{ content: { color: "#faad14" } }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={4}>
-          <Card size="small">
-            <Statistic
-              title="Kelmagan"
-              value={stats.absent}
-              styles={{ content: { color: "#ff4d4f" } }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={4}>
-          <Card size="small">
-            <Statistic
-              title="Sababli"
-              value={stats.excused}
-              styles={{ content: { color: "#8c8c8c" } }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={4}>
-          <Card size="small">
-            <Statistic
-              title="O'rtacha vaqt"
-              value={formatDuration(avgTimePerDay)}
-              prefix={<ClockCircleOutlined />}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Average late info */}
-      {stats.late > 0 && (
-        <Card size="small" style={{ marginBottom: 16, background: '#fffbe6' }}>
-          <Text>
-            ⏰ <strong>O'rtacha kechikish:</strong> {stats.avgLateMinutes} daqiqa ({stats.late} marta kech kelgan)
-          </Text>
-        </Card>
-      )}
-
-      {/* Pie Chart va Oxirgi Kirdi-Chiqdilar */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} lg={12}>
-          <Card title="Davomat taqsimoti" size="small">
+      {/* Chart va Loglar - Tablet/Desktop yonma-yon */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+        {/* Pie Chart */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card title="Davomat taqsimoti" size="small" styles={{ body: { height: 240 } }}>
             {stats.total > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={[
@@ -313,12 +298,11 @@ const StudentDetail: React.FC = () => {
                       { name: "Sababli", value: stats.excused, color: "#8c8c8c" },
                     ].filter(d => d.value > 0)}
                     cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={70}
+                    cy="45%"
+                    innerRadius={40}
+                    outerRadius={65}
                     paddingAngle={5}
                     dataKey="value"
-                    label={({ name, value }) => `${name}: ${value}`}
                   >
                     {[
                       { name: "Kelgan", value: stats.present, color: "#52c41a" },
@@ -329,72 +313,82 @@ const StudentDetail: React.FC = () => {
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Legend />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <Empty description="Ma'lumot yo'q" />
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Empty description="Ma'lumot yo'q" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              </div>
             )}
           </Card>
         </Col>
-        <Col xs={24} lg={12}>
-          <Card title="Oxirgi kirdi-chiqdilar" size="small">
+        
+        {/* Oxirgi Kirdi-Chiqdilar */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card title="Oxirgi faoliyat" size="small" styles={{ body: { height: 240, overflowY: 'auto' } }}>
             {events.length > 0 ? (
-              <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-                {events.slice(0, 10).map((event) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {events.slice(0, 8).map((event) => (
                   <div 
                     key={event.id} 
                     style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
-                      gap: 10,
-                      padding: '8px 10px',
-                      marginBottom: 6,
+                      gap: 8,
+                      padding: '6px 8px',
                       background: event.eventType === 'IN' ? '#f6ffed' : '#e6f7ff',
-                      borderRadius: 6,
+                      borderRadius: 4,
                       borderLeft: `3px solid ${event.eventType === 'IN' ? '#52c41a' : '#1890ff'}`,
                     }}
                   >
                     <Tag 
                       icon={event.eventType === "IN" ? <LoginOutlined /> : <LogoutOutlined />}
                       color={event.eventType === "IN" ? "success" : "processing"}
-                      style={{ margin: 0 }}
+                      style={{ margin: 0, fontSize: 11, padding: '0 6px' }}
                     >
-                      {event.eventType === "IN" ? "KIRDI" : "CHIQDI"}
+                      {event.eventType === "IN" ? "IN" : "OUT"}
                     </Tag>
-                    <Text strong>{dayjs(event.timestamp).format("HH:mm")}</Text>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {dayjs(event.timestamp).format("DD MMM")}
+                    <Text strong style={{ fontSize: 13 }}>{dayjs(event.timestamp).format("HH:mm")}</Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {dayjs(event.timestamp).format("DD/MM")}
                     </Text>
-                    {event.device?.name && (
-                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 'auto' }}>
-                        {event.device.name}
-                      </Text>
-                    )}
                   </div>
                 ))}
               </div>
             ) : (
-              <Empty description="Kirdi-chiqdi ma'lumoti yo'q" />
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Empty description="Ma'lumot yo'q" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              </div>
             )}
           </Card>
         </Col>
-      </Row>
 
-      <Card 
-        title="Davomat Kalendari" 
-        style={{ marginBottom: 16 }}
-        extra={
-          <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
-            <span><Badge color="green" /> Kelgan</span>
-            <span><Badge color="orange" /> Kech</span>
-            <span><Badge color="red" /> Kelmagan</span>
-            <span><Badge color="gray" /> Excused</span>
-          </div>
-        }
-      >
-        <Calendar fullscreen={false} cellRender={dateCellRender} />
-      </Card>
+        {/* Kalendar - Desktop'da yonma-yon, Tablet/Mobile'da toggle */}
+        <Col xs={24} lg={8}>
+          <Card 
+            title={
+              <Space>
+                <CalendarOutlined />
+                <span>Kalendar</span>
+              </Space>
+            }
+            size="small"
+            styles={{ body: { height: 240, overflow: 'hidden' } }}
+            extra={
+              <Space size={4} style={{ fontSize: 10 }}>
+                <Badge color="green" text="K" />
+                <Badge color="orange" text="Ke" />
+                <Badge color="red" text="Yo" />
+              </Space>
+            }
+          >
+            <div style={{ transform: 'scale(0.85)', transformOrigin: 'top left', width: '118%' }}>
+              <Calendar fullscreen={false} cellRender={dateCellRender} />
+            </div>
+          </Card>
+        </Col>
+      </Row>
 
       <Card 
         title="Davomat Tarixi"

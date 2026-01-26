@@ -21,16 +21,22 @@ export default async function (fastify: FastifyInstance) {
 
     const classesWithAttendance = await Promise.all(
       classes.map(async (cls) => {
-        const presentCount = await prisma.dailyAttendance.count({
-          where: {
-            date: today,
-            status: { in: ["PRESENT", "LATE"] },
-            student: { classId: cls.id },
-          },
-        });
+        const [presentCount, lateCount, absentCount] = await Promise.all([
+          prisma.dailyAttendance.count({
+            where: { date: today, status: "PRESENT", student: { classId: cls.id } },
+          }),
+          prisma.dailyAttendance.count({
+            where: { date: today, status: "LATE", student: { classId: cls.id } },
+          }),
+          prisma.dailyAttendance.count({
+            where: { date: today, status: "ABSENT", student: { classId: cls.id } },
+          }),
+        ]);
         return {
           ...cls,
-          todayPresent: presentCount,
+          todayPresent: presentCount + lateCount,
+          todayLate: lateCount,
+          todayAbsent: absentCount,
           totalStudents: cls._count.students,
         };
       })

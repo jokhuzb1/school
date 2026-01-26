@@ -2,8 +2,10 @@ import api from './api';
 import type { DashboardStats, AttendanceEvent } from '../types';
 
 export const dashboardService = {
-    async getStats(schoolId: string): Promise<DashboardStats> {
-        const response = await api.get<DashboardStats>(`/schools/${schoolId}/dashboard`);
+    async getStats(schoolId: string, classId?: string): Promise<DashboardStats> {
+        const response = await api.get<DashboardStats>(`/schools/${schoolId}/dashboard`, {
+            params: classId ? { classId } : {}
+        });
         return response.data;
     },
 

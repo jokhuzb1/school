@@ -7,31 +7,42 @@ export default async function (fastify: FastifyInstance) {
     { preHandler: [(fastify as any).authenticate] } as any,
     async (request: any) => {
       const { schoolId } = request.params;
+      const { classId } = request.query as { classId?: string };
+      
       const tz =
         (await prisma.school.findUnique({ where: { id: schoolId } }))
           ?.timezone || "UTC";
+      
+      // Sinf filter uchun student filter
+      const studentFilter: any = { schoolId, isActive: true };
+      const attendanceFilter: any = {};
+      if (classId) {
+        studentFilter.classId = classId;
+        attendanceFilter.student = { classId };
+      }
+      
       // total students
       const totalStudents = await prisma.student.count({
-        where: { schoolId, isActive: true },
+        where: studentFilter,
       });
       const todayStr = new Date().toLocaleDateString("en-CA");
       const today = new Date(`${todayStr}T00:00:00Z`);
       const presentToday = await prisma.dailyAttendance.count({
-        where: { schoolId, date: today, status: "PRESENT" },
+        where: { schoolId, date: today, status: "PRESENT", ...attendanceFilter },
       });
       const lateToday = await prisma.dailyAttendance.count({
-        where: { schoolId, date: today, status: "LATE" },
+        where: { schoolId, date: today, status: "LATE", ...attendanceFilter },
       });
       const absentToday = await prisma.dailyAttendance.count({
-        where: { schoolId, date: today, status: "ABSENT" },
+        where: { schoolId, date: today, status: "ABSENT", ...attendanceFilter },
       });
       const excusedToday = await prisma.dailyAttendance.count({
-        where: { schoolId, date: today, status: "EXCUSED" },
+        where: { schoolId, date: today, status: "EXCUSED", ...attendanceFilter },
       });
 
       // Hozir maktabda bo'lganlar soni
       const currentlyInSchool = await prisma.dailyAttendance.count({
-        where: { schoolId, date: today, currentlyInSchool: true },
+        where: { schoolId, date: today, currentlyInSchool: true, ...attendanceFilter },
       });
 
       // Class breakdown - get stats per class
