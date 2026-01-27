@@ -111,10 +111,10 @@ const Attendance: React.FC = () => {
       if (!canEdit) return;
       if (isTeacher && status !== "EXCUSED") return;
       await attendanceService.update(id, { status });
-      message.success("Status updated");
+      message.success("Holat yangilandi");
       fetchData();
     } catch (err) {
-      message.error("Failed to update");
+      message.error("Yangilashda xatolik");
     }
   };
 
@@ -136,7 +136,7 @@ const Attendance: React.FC = () => {
       link.click();
       link.remove();
     } catch (err) {
-      message.error("Failed to export Excel");
+      message.error("Eksportda xatolik");
     }
   };
 
@@ -159,14 +159,14 @@ const Attendance: React.FC = () => {
 
   const columns = [
     {
-      title: "Photo",
+      title: "Rasm",
       dataIndex: ["student", "photoUrl"],
       key: "photo",
       render: (url: string) =>
         url ? (
           <img
             src={getAssetUrl(url)}
-            alt="student"
+            alt="o'quvchi"
             style={{
               width: 40,
               height: 40,
@@ -176,25 +176,25 @@ const Attendance: React.FC = () => {
           />
         ) : null,
     },
-    { title: "Student", dataIndex: ["student", "name"], key: "student" },
-    { title: "Class", dataIndex: ["student", "class", "name"], key: "class" },
+    { title: "O'quvchi", dataIndex: ["student", "name"], key: "student" },
+    { title: "Sinf", dataIndex: ["student", "class", "name"], key: "class" },
     {
-      title: "Status",
+      title: "Holat",
       dataIndex: "status",
       key: "status",
       render: (status: AttendanceStatus, record: DailyAttendance) => {
         if (!canEdit) {
           return (
             <Tag color={status === "PRESENT" ? "green" : status === "LATE" ? "orange" : status === "ABSENT" ? "red" : "gray"}>
-              {status}
+              {status === "PRESENT" ? "Kelgan" : status === "LATE" ? "Kech" : status === "ABSENT" ? "Kelmagan" : "Sababli"}
             </Tag>
           );
         }
         const options = [
-          { value: "PRESENT", label: <Tag color="green">Present</Tag>, disabled: isTeacher },
-          { value: "LATE", label: <Tag color="orange">Late</Tag>, disabled: isTeacher },
-          { value: "ABSENT", label: <Tag color="red">Absent</Tag>, disabled: isTeacher },
-          { value: "EXCUSED", label: <Tag color="gray">Excused</Tag>, disabled: false },
+          { value: "PRESENT", label: <Tag color="green">Kelgan</Tag>, disabled: isTeacher },
+          { value: "LATE", label: <Tag color="orange">Kech</Tag>, disabled: isTeacher },
+          { value: "ABSENT", label: <Tag color="red">Kelmagan</Tag>, disabled: isTeacher },
+          { value: "EXCUSED", label: <Tag color="gray">Sababli</Tag>, disabled: false },
         ];
         return (
           <Select
@@ -208,22 +208,22 @@ const Attendance: React.FC = () => {
       },
     },
     {
-      title: "First Scan",
+      title: "Birinchi skan",
       dataIndex: "firstScanTime",
       key: "first",
       render: (t: string) => (t ? dayjs(t).format("HH:mm") : "-"),
     },
     {
-      title: "Last Scan",
+      title: "Oxirgi skan",
       dataIndex: "lastScanTime",
       key: "last",
       render: (t: string) => (t ? dayjs(t).format("HH:mm") : "-"),
     },
     {
-      title: "Late By",
+      title: "Kechikish",
       dataIndex: "lateMinutes",
       key: "late",
-      render: (m: number | null) => (m ? `${m} min` : "-"),
+      render: (m: number | null) => (m ? `${m} daq` : "-"),
     },
   ];
 
@@ -231,13 +231,12 @@ const Attendance: React.FC = () => {
     <div>
       {/* Connection Status Indicator */}
       <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Tooltip title={isConnected ? 'Real-time ulangan' : 'Real-time ulanish yo\'q'}>
+          <Tooltip title={isConnected ? 'Jonli ulangan' : 'Jonli ulanish yo\'q'}>
           <Badge
             status={isConnected ? 'success' : 'error'}
             text={
               <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
                 <WifiOutlined style={{ color: isConnected ? '#52c41a' : '#ff4d4f' }} />
-                {isConnected ? 'Live' : 'Offline'}
               </span>
             }
           />
@@ -248,7 +247,7 @@ const Attendance: React.FC = () => {
         <Col xs={8}>
           <Card>
             <Statistic
-              title="Present"
+              title="Kelgan"
               value={stats.present}
               styles={{ content: { color: "#52c41a" } }}
             />
@@ -257,7 +256,7 @@ const Attendance: React.FC = () => {
         <Col xs={8}>
           <Card>
             <Statistic
-              title="Late"
+              title="Kech"
               value={stats.late}
               styles={{ content: { color: "#faad14" } }}
             />
@@ -266,7 +265,7 @@ const Attendance: React.FC = () => {
         <Col xs={8}>
           <Card>
             <Statistic
-              title="Absent"
+              title="Kelmagan"
               value={stats.absent}
               styles={{ content: { color: "#ff4d4f" } }}
             />
@@ -275,7 +274,7 @@ const Attendance: React.FC = () => {
       </Row>
 
       <Space style={{ marginBottom: 16, flexWrap: "wrap" }} size="middle">
-        {/* Search Input */}
+        {/* Qidiruv */}
         <Input
           placeholder="O'quvchi nomi..."
           prefix={<SearchOutlined />}
@@ -322,7 +321,7 @@ const Attendance: React.FC = () => {
           options={classes.map((c) => ({ label: c.name, value: c.id }))}
         />
         <Select
-          placeholder="Status"
+          placeholder="Holat"
           value={statusFilter}
           onChange={setStatusFilter}
           style={{ width: 120 }}
@@ -331,11 +330,11 @@ const Attendance: React.FC = () => {
             { value: "PRESENT", label: "Kelgan" },
             { value: "LATE", label: "Kech" },
             { value: "ABSENT", label: "Kelmagan" },
-            { value: "EXCUSED", label: "Excused" },
+            { value: "EXCUSED", label: "Sababli" },
           ]}
         />
         <Button icon={<DownloadOutlined />} onClick={handleExport}>
-          Export
+          Eksport
         </Button>
         {isSchoolAdmin && selectedRowKeys.length > 0 && (
           <Button
@@ -348,7 +347,7 @@ const Attendance: React.FC = () => {
                   selectedRowKeys as string[],
                   'EXCUSED'
                 );
-                message.success(`${result.updated} ta yozuv "Excused" qilindi`);
+                message.success(`${result.updated} ta yozuv "Sababli" qilindi`);
                 setSelectedRowKeys([]);
                 fetchData();
               } catch (err) {
@@ -358,7 +357,7 @@ const Attendance: React.FC = () => {
               }
             }}
           >
-            {selectedRowKeys.length} tani Excused qilish
+            {selectedRowKeys.length} tani Sababli qilish
           </Button>
         )}
       </Space>

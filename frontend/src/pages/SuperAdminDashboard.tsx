@@ -84,7 +84,7 @@ interface AdminDashboardData {
   weeklyStats: { date: string; dayName: string; present: number; late: number; absent: number }[];
 }
 
-// Real-time event interface
+// Real vaqt event interfeysi
 interface RealtimeEvent {
   id: string;
   schoolId: string;
@@ -110,7 +110,7 @@ const SuperAdminDashboard: React.FC = () => {
   // Bugunmi tekshirish (SSE va real-time uchun)
   const isToday = selectedPeriod === 'today';
 
-  // ✅ Debounced fetch - har bir eventda emas, 5 sekundda bir marta
+  // Debounced fetch - har bir eventda emas, 5 sekundda bir marta
   const debouncedFetchData = useMemo(
     () =>
       debounce(async () => {
@@ -130,7 +130,7 @@ const SuperAdminDashboard: React.FC = () => {
     [selectedPeriod, customDateRange]
   );
 
-  // ✅ SSE event handler - local state update + debounced API call (faqat bugun uchun)
+  // SSE event handler - local state update + debounced API call (faqat bugun uchun)
   const handleAttendanceEvent = useCallback((event: any) => {
     // Faqat bugun tanlangan bo'lsa real-time yangilash
     if (!isToday) return;
@@ -148,7 +148,7 @@ const SuperAdminDashboard: React.FC = () => {
     // Add to realtime events (keep last 20)
     setRealtimeEvents(prev => [newEvent, ...prev].slice(0, 20));
 
-    // ✅ Local state update - tezkor UI yangilanishi
+    // Local state update - tezkor UI yangilanishi
     if (data && event.schoolId) {
       setData(prevData => {
         if (!prevData) return prevData;
@@ -187,7 +187,7 @@ const SuperAdminDashboard: React.FC = () => {
     debouncedFetchData();
   }, [data, debouncedFetchData, isToday]);
 
-  // ✅ SSE connection (faqat bugun uchun faol)
+  // SSE connection (faqat bugun uchun faol)
   const { isConnected, connectionStats } = useAdminSSE({
     onAttendanceEvent: handleAttendanceEvent,
     enabled: isToday,
@@ -245,9 +245,9 @@ const SuperAdminDashboard: React.FC = () => {
 
   // Holat aniqlash
   const getStatus = (percent: number) => {
-    if (percent >= 90) return { color: "#52c41a", text: "Yaxshi", icon: "🟢" };
-    if (percent >= 75) return { color: "#faad14", text: "Normal", icon: "🟡" };
-    return { color: "#ff4d4f", text: "Muammo", icon: "🔴" };
+    if (percent >= 90) return { color: "#52c41a", text: "Yaxshi", icon: "" };
+    if (percent >= 75) return { color: "#faad14", text: "Normal", icon: "" };
+    return { color: "#ff4d4f", text: "Muammo", icon: "" };
   };
 
   // Jadval ustunlari
@@ -351,7 +351,7 @@ const SuperAdminDashboard: React.FC = () => {
             placement="left"
             title={
               <span style={{ color: status.color }}>
-                {status.icon} {record.name} - {status.text}
+                {status.icon ? `${status.icon} ` : ""}{record.name} - {status.text}
               </span>
             }
             content={
@@ -389,7 +389,7 @@ const SuperAdminDashboard: React.FC = () => {
           >
             <div style={{ cursor: "pointer" }}>
               <Text style={{ color: status.color }}>
-                {status.icon} {status.text}
+                {status.icon ? `${status.icon} ` : ""}{status.text}
               </Text>
             </div>
           </Popover>
@@ -441,9 +441,9 @@ const SuperAdminDashboard: React.FC = () => {
 
           <div style={{ width: 1, height: 24, background: "#e8e8e8" }} />
 
-          {/* ✅ Real-time connection status (faqat bugun uchun) */}
+          {/* Real vaqt ulanish holati (faqat bugun uchun) */}
           {isToday && (
-            <Tooltip title={isConnected ? `Real-time ulanish faol${connectionStats ? ` (${connectionStats.total} ulanish)` : ''}` : "Real-time ulanish yo'q"}>
+            <Tooltip title={isConnected ? `Real vaqt ulanishi faol${connectionStats ? ` (${connectionStats.total} ulanish)` : ''}` : "Real vaqt ulanishi yo'q"}>
               <div style={{ 
                 display: "flex", 
                 alignItems: "center", 
@@ -594,7 +594,7 @@ const SuperAdminDashboard: React.FC = () => {
         />
       </Card>
 
-      {/* Haftalik trend va Real-time events */}
+      {/* Haftalik trend va real vaqt eventlar */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: 12 }}>
         {/* Haftalik trend */}
         <Card title="Haftalik trend" size="small" styles={{ body: { height: 200 } }}>
@@ -615,11 +615,10 @@ const SuperAdminDashboard: React.FC = () => {
           )}
         </Card>
 
-        {/* ✅ Real-time events panel */}
+        {/* Real vaqt eventlar paneli */}
         <Card 
           title={
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span>Jonli oqim</span>
               {isConnected && (
                 <Badge 
                   count={realtimeEvents.length} 
@@ -634,10 +633,10 @@ const SuperAdminDashboard: React.FC = () => {
           extra={
             isConnected ? (
               <Tag color="success" style={{ margin: 0 }}>
-                <SyncOutlined spin /> Live
+                <SyncOutlined spin />
               </Tag>
             ) : (
-              <Tag color="error" style={{ margin: 0 }}>Offline</Tag>
+              <Tag color="error" style={{ margin: 0 }}></Tag>
             )
           }
         >
@@ -672,7 +671,7 @@ const SuperAdminDashboard: React.FC = () => {
                     <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
                       <Text type="secondary" style={{ fontSize: 10 }}>
                         {event.schoolName || 'Maktab'}
-                        {event.className && ` • ${event.className}`}
+                        {event.className && ` - ${event.className}`}
                       </Text>
                       <Tag 
                         color={event.eventType === 'IN' ? 'success' : 'error'} 

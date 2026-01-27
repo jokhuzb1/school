@@ -76,7 +76,7 @@ const EventTag: React.FC<EventTagProps> = ({
 
     return (
         <Tag color={config.color} icon={showIcon ? config.icon : undefined} style={style}>
-            {eventType}
+            {config.text}
         </Tag>
     );
 };

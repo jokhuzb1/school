@@ -1,9 +1,23 @@
 import { FastifyInstance } from "fastify";
 import prisma from "../prisma";
 import ExcelJS from "exceljs";
-import { getDateOnlyInZone, getDateRangeInZone, getTimePartsInZone, DateRangeType } from "../utils/date";
-import { requireRoles, requireSchoolScope, requireStudentSchoolScope, requireTeacherClassScope } from "../utils/authz";
+import {
+  getDateOnlyInZone,
+  getDateRangeInZone,
+  DateRangeType,
+} from "../utils/date";
+import {
+  requireRoles,
+  requireSchoolScope,
+  requireStudentSchoolScope,
+  requireTeacherClassScope,
+} from "../utils/authz";
 import { sendHttpError } from "../utils/httpErrors";
+import {
+  computeAttendanceStatus,
+  getNowMinutesInZone,
+  EffectiveStatus,
+} from "../utils/attendanceStatus";
 
 export default async function (fastify: FastifyInstance) {
   // Students list with period-based attendance stats
@@ -13,12 +27,19 @@ export default async function (fastify: FastifyInstance) {
     async (request: any, reply) => {
       try {
         const { schoolId } = request.params;
-        const { page = 1, search = "", classId, period, startDate, endDate } = request.query as any;
+        const {
+          page = 1,
+          search = "",
+          classId,
+          period,
+          startDate,
+          endDate,
+        } = request.query as any;
         const take = 50;
         const skip = (Number(page) - 1) * take;
 
         const user = request.user;
-        requireRoles(user, ['SCHOOL_ADMIN', 'TEACHER', 'GUARD']);
+        requireRoles(user, ["SCHOOL_ADMIN", "TEACHER", "GUARD"]);
         requireSchoolScope(user, schoolId);
 
         // Vaqt oralig'ini hisoblash
@@ -26,12 +47,19 @@ export default async function (fastify: FastifyInstance) {
           where: { id: schoolId },
           select: { timezone: true, absenceCutoffMinutes: true },
         });
-        const tz = school?.timezone || 'Asia/Tashkent';
+        const tz = school?.timezone || "Asia/Tashkent";
         const absenceCutoffMinutes = school?.absenceCutoffMinutes ?? 180;
-        const dateRange = getDateRangeInZone(period || 'today', tz, startDate, endDate);
-        const isSingleDay = dateRange.startDate.getTime() === dateRange.endDate.getTime();
+        const dateRange = getDateRangeInZone(
+          period || "today",
+          tz,
+          startDate,
+          endDate,
+        );
+        const isSingleDay =
+          dateRange.startDate.getTime() === dateRange.endDate.getTime();
         const today = getDateOnlyInZone(new Date(), tz);
-        const isToday = isSingleDay && dateRange.startDate.getTime() === today.getTime();
+        const isToday =
+          isSingleDay && dateRange.startDate.getTime() === today.getTime();
 
         const where: any = {
           schoolId,
@@ -42,170 +70,214 @@ export default async function (fastify: FastifyInstance) {
           where.name = { contains: search, mode: "insensitive" };
         }
 
-        if (user.role === 'TEACHER') {
-          const rows = await prisma.teacherClass.findMany({ where: { teacherId: user.sub }, select: { classId: true } });
+        if (user.role === "TEACHER") {
+          const rows = await prisma.teacherClass.findMany({
+            where: { teacherId: user.sub },
+            select: { classId: true },
+          });
           const allowedClassIds = rows.map((r) => r.classId);
 
-        if (classId) {
-          // teacher requested specific class -> must be in allowed
-          if (!allowedClassIds.includes(classId)) {
-            return reply.status(403).send({ error: 'forbidden' });
-          }
-          where.classId = classId;
-        } else {
-          where.classId = { in: allowedClassIds.length ? allowedClassIds : ['__none__'] };
-        }
-      } else {
-        if (classId) {
-          where.classId = classId;
-        }
-      }
-
-      const [students, total] = await Promise.all([
-        prisma.student.findMany({
-          where,
-          skip,
-          take,
-          include: { class: true },
-          orderBy: { name: "asc" },
-        }),
-        prisma.student.count({ where }),
-      ]);
-
-      const studentIds = students.map((s) => s.id);
-      
-      // Vaqt oralig'iga qarab attendance olish
-      const dateFilter = isSingleDay 
-        ? { date: dateRange.startDate }
-        : { date: { gte: dateRange.startDate, lte: dateRange.endDate } };
-
-      const periodAttendance = await prisma.dailyAttendance.findMany({
-        where: {
-          studentId: { in: studentIds },
-          ...dateFilter,
-        },
-        select: {
-          studentId: true,
-          status: true,
-          firstScanTime: true,
-          date: true,
-        },
-      });
-
-      // Har bir student uchun statistikani hisoblash
-      const studentStatsMap = new Map<string, {
-        presentCount: number;
-        lateCount: number;
-        absentCount: number;
-        excusedCount: number;
-        totalDays: number;
-        lastStatus: string | null;
-        lastFirstScan: Date | null;
-      }>();
-
-      // Studentlar uchun boshlang'ich qiymatlar
-      studentIds.forEach(id => {
-        studentStatsMap.set(id, {
-          presentCount: 0,
-          lateCount: 0,
-          absentCount: 0,
-          excusedCount: 0,
-          totalDays: 0,
-          lastStatus: null,
-          lastFirstScan: null,
-        });
-      });
-
-      // Attendance ma'lumotlarini yig'ish
-      periodAttendance.forEach((a) => {
-        const stats = studentStatsMap.get(a.studentId);
-        if (stats) {
-          stats.totalDays++;
-          if (a.status === 'PRESENT') stats.presentCount++;
-          else if (a.status === 'LATE') stats.lateCount++;
-          else if (a.status === 'ABSENT') stats.absentCount++;
-          else if (a.status === 'EXCUSED') stats.excusedCount++;
-          
-          // Oxirgi sanani saqlash (bugun yoki oxirgi kun uchun)
-          if (!stats.lastFirstScan || (a.firstScanTime && a.date > (stats.lastFirstScan as any))) {
-            stats.lastStatus = a.status;
-            stats.lastFirstScan = a.firstScanTime;
-          }
-        }
-      });
-
-      // Add attendance stats to each student
-      const studentsWithStatus = students.map((s) => {
-        const stats = studentStatsMap.get(s.id);
-        let todayEffectiveStatus: any = null;
-        if (isToday) {
-          if (stats?.lastStatus) {
-            todayEffectiveStatus = stats.lastStatus;
+          if (classId) {
+            // teacher requested specific class -> must be in allowed
+            if (!allowedClassIds.includes(classId)) {
+              return reply.status(403).send({ error: "forbidden" });
+            }
+            where.classId = classId;
           } else {
-            const startTime = s.class?.startTime;
-            if (!startTime) {
-              todayEffectiveStatus = 'PENDING';
-            } else {
-              const [sh, sm] = startTime.split(':').map(Number);
-              const timeParts = getTimePartsInZone(new Date(), tz);
-              const nowMinutes = timeParts.hours * 60 + timeParts.minutes;
-              const startMinutes = sh * 60 + sm;
-              const cutoffMinutes = startMinutes + absenceCutoffMinutes;
-              todayEffectiveStatus = nowMinutes < cutoffMinutes ? 'PENDING' : 'ABSENT';
+            where.classId = {
+              in: allowedClassIds.length ? allowedClassIds : ["__none__"],
+            };
+          }
+        } else {
+          if (classId) {
+            where.classId = classId;
+          }
+        }
+
+        const [students, total] = await Promise.all([
+          prisma.student.findMany({
+            where,
+            skip,
+            take,
+            include: { class: true },
+            orderBy: { name: "asc" },
+          }),
+          prisma.student.count({ where }),
+        ]);
+
+        const studentIds = students.map((s) => s.id);
+
+        // Vaqt oralig'iga qarab attendance olish
+        const dateFilter = isSingleDay
+          ? { date: dateRange.startDate }
+          : { date: { gte: dateRange.startDate, lte: dateRange.endDate } };
+
+        const periodAttendance = await prisma.dailyAttendance.findMany({
+          where: {
+            studentId: { in: studentIds },
+            ...dateFilter,
+          },
+          select: {
+            studentId: true,
+            status: true,
+            firstScanTime: true,
+            date: true,
+          },
+        });
+
+        // Har bir student uchun statistikani hisoblash
+        const studentStatsMap = new Map<
+          string,
+          {
+            presentCount: number;
+            lateCount: number;
+            absentCount: number;
+            excusedCount: number;
+            totalDays: number;
+            lastStatus: string | null;
+            lastFirstScan: Date | null;
+          }
+        >();
+
+        // Studentlar uchun boshlang'ich qiymatlar
+        studentIds.forEach((id) => {
+          studentStatsMap.set(id, {
+            presentCount: 0,
+            lateCount: 0,
+            absentCount: 0,
+            excusedCount: 0,
+            totalDays: 0,
+            lastStatus: null,
+            lastFirstScan: null,
+          });
+        });
+
+        // Attendance ma'lumotlarini yig'ish
+        periodAttendance.forEach((a) => {
+          const stats = studentStatsMap.get(a.studentId);
+          if (stats) {
+            stats.totalDays++;
+            if (a.status === "PRESENT") stats.presentCount++;
+            else if (a.status === "LATE") stats.lateCount++;
+            else if (a.status === "ABSENT") stats.absentCount++;
+            else if (a.status === "EXCUSED") stats.excusedCount++;
+
+            // Oxirgi sanani saqlash (bugun yoki oxirgi kun uchun)
+            if (
+              !stats.lastFirstScan ||
+              (a.firstScanTime && a.date > (stats.lastFirstScan as any))
+            ) {
+              stats.lastStatus = a.status;
+              stats.lastFirstScan = a.firstScanTime;
             }
           }
-        }
-        return {
-          ...s,
-          // Bitta kun uchun - to'g'ridan-to'g'ri status
-          todayStatus: isSingleDay ? stats?.lastStatus || null : null,
-          todayFirstScan: isSingleDay ? stats?.lastFirstScan || null : null,
-          todayEffectiveStatus: isSingleDay ? todayEffectiveStatus : null,
-          // Ko'p kunlik statistika
-          periodStats: !isSingleDay ? {
-            presentCount: stats?.presentCount || 0,
-            lateCount: stats?.lateCount || 0,
-            absentCount: stats?.absentCount || 0,
-            excusedCount: stats?.excusedCount || 0,
-            totalDays: stats?.totalDays || 0,
-            attendancePercent: stats && stats.totalDays > 0 
-              ? Math.round(((stats.presentCount + stats.lateCount) / stats.totalDays) * 100)
-              : 0,
-          } : null,
+        });
+
+        // Add attendance stats to each student
+        const now = new Date();
+        const nowMinutes = getNowMinutesInZone(now, tz);
+
+        const studentsWithStatus = students.map((s) => {
+          const stats = studentStatsMap.get(s.id);
+          let todayEffectiveStatus: EffectiveStatus | null = null;
+
+          if (isSingleDay) {
+            if (isToday) {
+              // Use centralized utility for consistent status calculation
+              const debugInput = {
+                dbStatus: stats?.lastStatus || null,
+                classStartTime: s.class?.startTime || null,
+                absenceCutoffMinutes,
+                nowMinutes,
+              };
+              console.log(
+                `[DEBUG] Student ${s.name}: classStartTime=${debugInput.classStartTime}, nowMinutes=${nowMinutes}, cutoff=${absenceCutoffMinutes}, dbStatus=${debugInput.dbStatus}`,
+              );
+              todayEffectiveStatus = computeAttendanceStatus(debugInput);
+            } else {
+              // Past date with no record => absent, future date => pending
+              todayEffectiveStatus =
+                (stats?.lastStatus as EffectiveStatus) ||
+                (dateRange.startDate.getTime() < today.getTime()
+                  ? "ABSENT"
+                  : "PENDING");
+            }
+          }
+          return {
+            ...s,
+            // Bitta kun uchun - to'g'ridan-to'g'ri status
+            todayStatus: isSingleDay ? stats?.lastStatus || null : null,
+            todayFirstScan: isSingleDay ? stats?.lastFirstScan || null : null,
+            todayEffectiveStatus: isSingleDay ? todayEffectiveStatus : null,
+            // Ko'p kunlik statistika
+            periodStats: !isSingleDay
+              ? {
+                  presentCount: stats?.presentCount || 0,
+                  lateCount: stats?.lateCount || 0,
+                  absentCount: stats?.absentCount || 0,
+                  excusedCount: stats?.excusedCount || 0,
+                  totalDays: stats?.totalDays || 0,
+                  attendancePercent:
+                    stats && stats.totalDays > 0
+                      ? Math.round(
+                          ((stats.presentCount + stats.lateCount) /
+                            stats.totalDays) *
+                            100,
+                        )
+                      : 0,
+                }
+              : null,
+          };
+        });
+
+        // Umumiy statistika
+        const overallStats = {
+          total,
+          present: isSingleDay
+            ? studentsWithStatus.filter((s) => s.todayStatus === "PRESENT")
+                .length
+            : studentsWithStatus.reduce(
+                (sum, s) => sum + (s.periodStats?.presentCount || 0),
+                0,
+              ),
+          late: isSingleDay
+            ? studentsWithStatus.filter((s) => s.todayStatus === "LATE").length
+            : studentsWithStatus.reduce(
+                (sum, s) => sum + (s.periodStats?.lateCount || 0),
+                0,
+              ),
+          absent: isSingleDay
+            ? studentsWithStatus.filter((s) => s.todayStatus === "ABSENT")
+                .length
+            : studentsWithStatus.reduce(
+                (sum, s) => sum + (s.periodStats?.absentCount || 0),
+                0,
+              ),
+          excused: isSingleDay
+            ? studentsWithStatus.filter((s) => s.todayStatus === "EXCUSED")
+                .length
+            : studentsWithStatus.reduce(
+                (sum, s) => sum + (s.periodStats?.excusedCount || 0),
+                0,
+              ),
+          pending: isSingleDay
+            ? studentsWithStatus.filter(
+                (s) => s.todayEffectiveStatus === "PENDING",
+              ).length
+            : 0,
         };
-      });
 
-      // Umumiy statistika
-      const overallStats = {
-        total,
-        present: isSingleDay 
-          ? studentsWithStatus.filter(s => s.todayStatus === 'PRESENT').length
-          : studentsWithStatus.reduce((sum, s) => sum + (s.periodStats?.presentCount || 0), 0),
-        late: isSingleDay
-          ? studentsWithStatus.filter(s => s.todayStatus === 'LATE').length
-          : studentsWithStatus.reduce((sum, s) => sum + (s.periodStats?.lateCount || 0), 0),
-        absent: isSingleDay
-          ? studentsWithStatus.filter(s => s.todayStatus === 'ABSENT').length
-          : studentsWithStatus.reduce((sum, s) => sum + (s.periodStats?.absentCount || 0), 0),
-        excused: isSingleDay
-          ? studentsWithStatus.filter(s => s.todayStatus === 'EXCUSED').length
-          : studentsWithStatus.reduce((sum, s) => sum + (s.periodStats?.excusedCount || 0), 0),
-        pending: isSingleDay
-          ? studentsWithStatus.filter(s => s.todayEffectiveStatus === 'PENDING').length
-          : 0,
-      };
-
-      return { 
-        data: studentsWithStatus, 
-        total, 
-        page: Number(page),
-        period: period || 'today',
-        periodLabel: dateRange.label,
-        startDate: dateRange.startDate.toISOString(),
-        endDate: dateRange.endDate.toISOString(),
-        isSingleDay,
-        stats: overallStats,
-      };
+        return {
+          data: studentsWithStatus,
+          total,
+          page: Number(page),
+          period: period || "today",
+          periodLabel: dateRange.label,
+          startDate: dateRange.startDate.toISOString(),
+          endDate: dateRange.endDate.toISOString(),
+          isSingleDay,
+          stats: overallStats,
+        };
       } catch (err) {
         return sendHttpError(reply, err);
       }
@@ -221,7 +293,7 @@ export default async function (fastify: FastifyInstance) {
         const body = request.body;
         const user = request.user;
 
-        requireRoles(user, ['SCHOOL_ADMIN']);
+        requireRoles(user, ["SCHOOL_ADMIN"]);
         requireSchoolScope(user, schoolId);
 
         const student = await prisma.student.create({
@@ -242,46 +314,46 @@ export default async function (fastify: FastifyInstance) {
         const { schoolId } = request.params;
         const user = request.user;
 
-        requireRoles(user, ['SCHOOL_ADMIN']);
+        requireRoles(user, ["SCHOOL_ADMIN"]);
         requireSchoolScope(user, schoolId);
 
         const students = await prisma.student.findMany({
-        where: { schoolId, isActive: true },
-        include: { class: true },
-        orderBy: { name: "asc" },
-      });
-
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet("Students");
-      ws.columns = [
-        { header: "Name", key: "name", width: 30 },
-        { header: "Device ID", key: "deviceStudentId", width: 15 },
-        { header: "Class", key: "class", width: 15 },
-        { header: "Parent Name", key: "parentName", width: 25 },
-        { header: "Parent Phone", key: "parentPhone", width: 20 },
-      ];
-
-      students.forEach((s) => {
-        ws.addRow({
-          name: s.name,
-          deviceStudentId: s.deviceStudentId,
-          class: s.class?.name || "",
-          parentName: s.parentName || "",
-          parentPhone: s.parentPhone || "",
+          where: { schoolId, isActive: true },
+          include: { class: true },
+          orderBy: { name: "asc" },
         });
-      });
 
-      reply.header(
-        "Content-Type",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      );
-      reply.header(
-        "Content-Disposition",
-        'attachment; filename="students.xlsx"',
-      );
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet("Students");
+        ws.columns = [
+          { header: "Name", key: "name", width: 30 },
+          { header: "Device ID", key: "deviceStudentId", width: 15 },
+          { header: "Class", key: "class", width: 15 },
+          { header: "Parent Name", key: "parentName", width: 25 },
+          { header: "Parent Phone", key: "parentPhone", width: 20 },
+        ];
 
-      const buffer = await wb.xlsx.writeBuffer();
-      return reply.send(buffer);
+        students.forEach((s) => {
+          ws.addRow({
+            name: s.name,
+            deviceStudentId: s.deviceStudentId,
+            class: s.class?.name || "",
+            parentName: s.parentName || "",
+            parentPhone: s.parentPhone || "",
+          });
+        });
+
+        reply.header(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        );
+        reply.header(
+          "Content-Disposition",
+          'attachment; filename="students.xlsx"',
+        );
+
+        const buffer = await wb.xlsx.writeBuffer();
+        return reply.send(buffer);
       } catch (err) {
         return sendHttpError(reply, err);
       }
@@ -296,82 +368,82 @@ export default async function (fastify: FastifyInstance) {
         const { schoolId } = request.params;
         const user = request.user;
 
-        requireRoles(user, ['SCHOOL_ADMIN']);
+        requireRoles(user, ["SCHOOL_ADMIN"]);
         requireSchoolScope(user, schoolId);
 
-      const files = request.body.file;
-      if (!files || files.length === 0) {
-        return reply.status(400).send({ error: "No file uploaded" });
-      }
+        const files = request.body.file;
+        if (!files || files.length === 0) {
+          return reply.status(400).send({ error: "No file uploaded" });
+        }
 
-      const file = files[0];
-      const buffer = file.data;
+        const file = files[0];
+        const buffer = file.data;
 
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buffer);
-      const ws = wb.getWorksheet(1);
-      if (!ws) return reply.status(400).send({ error: "Invalid sheet" });
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buffer);
+        const ws = wb.getWorksheet(1);
+        if (!ws) return reply.status(400).send({ error: "Invalid sheet" });
 
-      let importedCount = 0;
-      for (let i = 2; i <= ws.rowCount; i++) {
-        const row = ws.getRow(i);
-        const name = row.getCell(1).text;
-        const deviceStudentId = row.getCell(2).text;
-        const className = row.getCell(3).text;
-        const parentName = row.getCell(4).text;
-        const parentPhone = row.getCell(5).text;
+        let importedCount = 0;
+        for (let i = 2; i <= ws.rowCount; i++) {
+          const row = ws.getRow(i);
+          const name = row.getCell(1).text;
+          const deviceStudentId = row.getCell(2).text;
+          const className = row.getCell(3).text;
+          const parentName = row.getCell(4).text;
+          const parentPhone = row.getCell(5).text;
 
-        if (!name || !deviceStudentId) continue;
+          if (!name || !deviceStudentId) continue;
 
-        let classId = null;
-        if (className) {
-          let cls = await prisma.class.findFirst({
-            where: { name: className, schoolId },
+          let classId = null;
+          if (className) {
+            let cls = await prisma.class.findFirst({
+              where: { name: className, schoolId },
+            });
+            if (!cls) {
+              cls = await prisma.class.create({
+                data: {
+                  name: className,
+                  schoolId,
+                  gradeLevel: 1,
+                  startTime: "08:00",
+                },
+              });
+            }
+            classId = cls.id;
+          }
+
+          const existingStudent = await prisma.student.findFirst({
+            where: { schoolId, deviceStudentId },
           });
-          if (!cls) {
-            cls = await prisma.class.create({
+
+          if (existingStudent) {
+            await prisma.student.update({
+              where: { id: existingStudent.id },
               data: {
-                name: className,
+                name,
+                classId,
+                parentName,
+                parentPhone,
+                isActive: true,
+              },
+            });
+          } else {
+            await prisma.student.create({
+              data: {
+                name,
+                deviceStudentId,
+                classId,
+                parentName,
+                parentPhone,
                 schoolId,
-                gradeLevel: 1,
-                startTime: "08:00",
               },
             });
           }
-          classId = cls.id;
+          importedCount++;
         }
 
-        const existingStudent = await prisma.student.findFirst({
-          where: { schoolId, deviceStudentId },
-        });
-
-        if (existingStudent) {
-          await prisma.student.update({
-            where: { id: existingStudent.id },
-            data: {
-              name,
-              classId,
-              parentName,
-              parentPhone,
-              isActive: true,
-            },
-          });
-        } else {
-          await prisma.student.create({
-            data: {
-              name,
-              deviceStudentId,
-              classId,
-              parentName,
-              parentPhone,
-              schoolId,
-            },
-          });
-        }
-        importedCount++;
-      }
-
-      return { imported: importedCount };
+        return { imported: importedCount };
       } catch (err) {
         return sendHttpError(reply, err);
       }
@@ -386,10 +458,10 @@ export default async function (fastify: FastifyInstance) {
         const { id } = request.params;
         const user = request.user;
 
-        requireRoles(user, ['SCHOOL_ADMIN', 'TEACHER', 'GUARD']);
+        requireRoles(user, ["SCHOOL_ADMIN", "TEACHER", "GUARD"]);
         const student = await requireStudentSchoolScope(user, id);
 
-        if (user.role === 'TEACHER' && student.classId) {
+        if (user.role === "TEACHER" && student.classId) {
           await requireTeacherClassScope(user, student.classId);
         }
 
@@ -413,10 +485,10 @@ export default async function (fastify: FastifyInstance) {
         const { id } = request.params;
         const user = request.user;
 
-        requireRoles(user, ['SCHOOL_ADMIN', 'TEACHER', 'GUARD']);
+        requireRoles(user, ["SCHOOL_ADMIN", "TEACHER", "GUARD"]);
         const student = await requireStudentSchoolScope(user, id);
 
-        if (user.role === 'TEACHER' && student.classId) {
+        if (user.role === "TEACHER" && student.classId) {
           await requireTeacherClassScope(user, student.classId);
         }
 
@@ -441,10 +513,10 @@ export default async function (fastify: FastifyInstance) {
         const user = request.user;
         const { date } = request.query as { date?: string };
 
-        requireRoles(user, ['SCHOOL_ADMIN', 'TEACHER', 'GUARD']);
+        requireRoles(user, ["SCHOOL_ADMIN", "TEACHER", "GUARD"]);
         const student = await requireStudentSchoolScope(user, id);
 
-        if (user.role === 'TEACHER' && student.classId) {
+        if (user.role === "TEACHER" && student.classId) {
           await requireTeacherClassScope(user, student.classId);
         }
 
@@ -479,7 +551,7 @@ export default async function (fastify: FastifyInstance) {
         const user = request.user;
         const data = request.body;
 
-        requireRoles(user, ['SCHOOL_ADMIN']);
+        requireRoles(user, ["SCHOOL_ADMIN"]);
         await requireStudentSchoolScope(user, id);
 
         const student = await prisma.student.update({ where: { id }, data });
@@ -498,7 +570,7 @@ export default async function (fastify: FastifyInstance) {
         const { id } = request.params;
         const user = request.user;
 
-        requireRoles(user, ['SCHOOL_ADMIN']);
+        requireRoles(user, ["SCHOOL_ADMIN"]);
         await requireStudentSchoolScope(user, id);
 
         const student = await prisma.student.update({

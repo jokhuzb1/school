@@ -16,7 +16,6 @@ import {
   Tooltip,
   Typography,
   List,
-  Progress,
   Select,
   Space,
   Calendar,
@@ -70,7 +69,13 @@ const PERIOD_OPTIONS = [
   { label: "Yil", value: "year" },
 ];
 
-const COLORS = ["#52c41a", "#faad14", "#ff4d4f", "#8c8c8c"];
+const PIE_COLORS: Record<string, string> = {
+  Kelgan: "#52c41a",
+  Kech: "#faad14",
+  Kelmagan: "#ff4d4f",
+  Sababli: "#8c8c8c",
+  "Hali kelmagan": "#d9d9d9",
+};
 
 const Dashboard: React.FC = () => {
   const { schoolId } = useSchool();
@@ -120,7 +125,7 @@ const Dashboard: React.FC = () => {
     }
   }, [schoolId, selectedClassId, selectedPeriod, customDateRange]);
 
-  // ✅ OPTIMIZATION: Debounced fetch - faqat 5 sekundda bir marta API chaqiriladi
+  // OPTIMIZATION: Debounced fetch - faqat 5 sekundda bir marta API chaqiriladi
   const debouncedFetchStats = useMemo(
     () =>
       debounce(
@@ -141,7 +146,7 @@ const Dashboard: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // ✅ OPTIMIZED: SSE event handler with local state update (faqat bugun uchun)
+  // OPTIMIZED: SSE event handler with local state update (faqat bugun uchun)
   const handleSSEEvent = useCallback(
     (event: any) => {
       // Faqat bugun tanlangan bo'lsa real-time yangilash
@@ -152,7 +157,7 @@ const Dashboard: React.FC = () => {
       // Add new event to the top of the list
       setEvents((prev) => [typedEvent, ...prev].slice(0, 10));
 
-      // ✅ LOCAL STATE UPDATE - tezkor UI yangilanishi, API kutmasdan
+      // LOCAL STATE UPDATE - tezkor UI yangilanishi, API kutmasdan
       setStats((prevStats) => {
         if (!prevStats) return prevStats;
 
@@ -176,7 +181,7 @@ const Dashboard: React.FC = () => {
         };
       });
 
-      // ✅ Debounced full refresh - batches multiple events
+      // Debounced full refresh - batches multiple events
       debouncedFetchStats();
     },
     [debouncedFetchStats, isToday],
@@ -232,13 +237,15 @@ const Dashboard: React.FC = () => {
   }
 
   if (!stats) {
-    return <Empty description="No data available" />;
+    return <Empty description="Ma'lumot mavjud emas" />;
   }
 
   const pieData = [
     { name: "Kelgan", value: stats.presentToday - stats.lateToday },
     { name: "Kech", value: stats.lateToday },
     { name: "Kelmagan", value: stats.absentToday },
+    { name: "Sababli", value: stats.excusedToday || 0 },
+    { name: "Hali kelmagan", value: stats.notYetArrivedCount || 0 },
   ].filter((d) => d.value > 0);
 
   return (
@@ -284,19 +291,10 @@ const Dashboard: React.FC = () => {
             />
 
             {isToday && (
-              <Tooltip title={isConnected ? "Real-time ulangan" : "Offline"}>
+              <Tooltip title={isConnected ? "Jonli ulangan" : "Oflayn"}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <Badge
                     status={isConnected ? "success" : "error"}
-                    text={
-                      isConnected ? (
-                        <Text strong style={{ color: "#52c41a" }}>
-                          LIVE
-                        </Text>
-                      ) : (
-                        "Offline"
-                      )
-                    }
                   />
                   {isConnected && (
                     <SyncOutlined
@@ -552,10 +550,10 @@ const Dashboard: React.FC = () => {
                     paddingAngle={5}
                     dataKey="value"
                   >
-                    {pieData.map((_, index) => (
+                    {pieData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
+                        fill={PIE_COLORS[entry.name] || "#d9d9d9"}
                       />
                     ))}
                   </Pie>
@@ -618,7 +616,7 @@ const Dashboard: React.FC = () => {
                       }
                       style={{ margin: 0, fontSize: 10, padding: "0 4px" }}
                     >
-                      {event.eventType}
+                      {event.eventType === "IN" ? "KIRDI" : "CHIQDI"}
                     </Tag>
                     <Text strong style={{ fontSize: 12 }}>
                       {dayjs(event.timestamp).format("HH:mm")}
@@ -777,11 +775,11 @@ const Dashboard: React.FC = () => {
             }}
           >
             <Text type="secondary">
-              ⏰ <strong>Kech qolish:</strong> sinf boshlanishidan{" "}
+              <strong>Kech qolish:</strong> sinf boshlanishidan{" "}
               {school.lateThresholdMinutes} daqiqa keyin
             </Text>
             <Text type="secondary">
-              ❌ <strong>Kelmagan:</strong> darsdan{" "}
+              <strong>Kelmagan:</strong> darsdan{" "}
               {school.absenceCutoffMinutes} daqiqa o'tgach avtomatik belgilanadi
               scan qilmasa
             </Text>

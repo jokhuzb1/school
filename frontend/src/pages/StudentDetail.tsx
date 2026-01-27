@@ -23,12 +23,8 @@ import {
   LoginOutlined,
   LogoutOutlined,
   ClockCircleOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
   ExclamationCircleOutlined,
   CalendarOutlined,
-  SyncOutlined,
-  TeamOutlined,
 } from "@ant-design/icons";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from "recharts";
 import { useParams } from "react-router-dom";
@@ -61,6 +57,12 @@ const statusColors: Record<AttendanceStatus, string> = {
   LATE: "orange",
   ABSENT: "red",
   EXCUSED: "gray",
+};
+const statusLabels: Record<AttendanceStatus, string> = {
+  PRESENT: "Kelgan",
+  LATE: "Kech",
+  ABSENT: "Kelmagan",
+  EXCUSED: "Sababli",
 };
 
 const StudentDetail: React.FC = () => {
@@ -170,7 +172,7 @@ const StudentDetail: React.FC = () => {
   }
 
   if (!student) {
-    return <Empty description="Student not found" />;
+    return <Empty description="O'quvchi topilmadi" />;
   }
 
   // Calculate stats including excused and average late time
@@ -205,12 +207,6 @@ const StudentDetail: React.FC = () => {
   };
 
   // Jami maktabda bo'lgan vaqtni hisoblash
-  const totalTimeInSchool = attendance.reduce(
-    (sum, a) => sum + (a.totalTimeOnPremises || 0),
-    0,
-  );
-  const avgTimePerDay =
-    stats.total > 0 ? Math.round(totalTimeInSchool / stats.total) : 0;
 
   // Vaqtni soat:daqiqa formatiga o'girish
   const formatDuration = (minutes: number) => {
@@ -218,7 +214,7 @@ const StudentDetail: React.FC = () => {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     if (hours > 0) {
-      return `${hours}s ${mins}d`;
+      return `${hours} soat ${mins} daqiqa`;
     }
     return `${mins} daqiqa`;
   };
@@ -236,7 +232,7 @@ const StudentDetail: React.FC = () => {
       key: "status",
       render: (s: AttendanceStatus, record: DailyAttendance) => (
         <Space>
-          <Tag color={statusColors[s]}>{s}</Tag>
+          <Tag color={statusColors[s]}>{statusLabels[s]}</Tag>
           {record.currentlyInSchool && (
             <Tag icon={<LoginOutlined />} color="purple">
               Maktabda
@@ -351,15 +347,12 @@ const StudentDetail: React.FC = () => {
                     {student.class?.name || "Sinf yo'q"}
                   </Tag>
                   <Tooltip
-                    title={isConnected ? "Real-time ulangan" : "Offline"}
+                    title={isConnected ? "Jonli ulangan" : "Oflayn"}
                   >
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 6 }}
                     >
                       <Badge status={isConnected ? "success" : "error"} />
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        {isConnected ? "LIVE" : "Offline"}
-                      </Text>
                     </div>
                   </Tooltip>
                 </Space>
@@ -676,7 +669,7 @@ const StudentDetail: React.FC = () => {
                       }
                       style={{ margin: 0, fontSize: 11, padding: "0 6px" }}
                     >
-                      {event.eventType === "IN" ? "IN" : "OUT"}
+                      {event.eventType === "IN" ? "KIRDI" : "CHIQDI"}
                     </Tag>
                     <Text strong style={{ fontSize: 13 }}>
                       {dayjs(event.timestamp).format("HH:mm")}
@@ -778,7 +771,7 @@ const StudentDetail: React.FC = () => {
             <Space>
               <span>{dayjs(selectedRecord.date).format("DD MMMM, YYYY")}</span>
               <Tag color={statusColors[selectedRecord.status]}>
-                {selectedRecord.status}
+                {statusLabels[selectedRecord.status]}
               </Tag>
               {selectedRecord.currentlyInSchool && (
                 <Tag icon={<LoginOutlined />} color="purple">

@@ -131,7 +131,7 @@ const Devices: React.FC = () => {
             )
         },
         { 
-            title: 'Device ID', 
+            title: 'Qurilma ID', 
             dataIndex: 'deviceId', 
             key: 'deviceId',
             render: (id: string) => <Text copyable={{ text: id }} style={{ fontSize: 12 }}>{id}</Text>
@@ -161,7 +161,7 @@ const Devices: React.FC = () => {
                         icon={isOnline ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
                         color={isOnline ? 'success' : 'error'}
                     >
-                        {isOnline ? 'Online' : 'Offline'}
+                        {isOnline ? 'Onlayn' : 'Oflayn'}
                     </Tag>
                 );
             },
@@ -210,16 +210,16 @@ const Devices: React.FC = () => {
                 <StatItem 
                     icon={<CheckCircleOutlined />} 
                     value={stats.online} 
-                    label="online" 
+                    label="" 
                     color="#52c41a"
-                    tooltip="Online qurilmalar"
+                    tooltip="Onlayn qurilmalar"
                 />
                 <StatItem 
                     icon={<CloseCircleOutlined />} 
                     value={stats.offline} 
-                    label="offline" 
+                    label="" 
                     color="#ff4d4f"
-                    tooltip="Offline qurilmalar"
+                    tooltip="Oflayn qurilmalar"
                 />
                 <Divider />
                 <StatItem 
@@ -243,7 +243,7 @@ const Devices: React.FC = () => {
                 {canManage && (
                     <Col xs={24} lg={8}>
                         <Card 
-                            title={<><ApiOutlined /> Webhook URL</>} 
+                        title={<><ApiOutlined /> Webhook manzili</>} 
                             size="small"
                             styles={{ body: { padding: 12 } }}
                         >
@@ -251,7 +251,7 @@ const Devices: React.FC = () => {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                                     <div>
                                         <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                                            <LoginOutlined style={{ color: '#52c41a' }} /> Kirish webhook:
+                                            <LoginOutlined style={{ color: '#52c41a' }} /> Kirish webhooki:
                                         </Text>
                                         <Input.Group compact>
                                             <Input value={webhookInfo.inUrl} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
@@ -262,7 +262,7 @@ const Devices: React.FC = () => {
                                     </div>
                                     <div>
                                         <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                                            <LogoutOutlined style={{ color: '#1890ff' }} /> Chiqish webhook:
+                                            <LogoutOutlined style={{ color: '#1890ff' }} /> Chiqish webhooki:
                                         </Text>
                                         <Input.Group compact>
                                             <Input value={webhookInfo.outUrl} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
@@ -272,7 +272,7 @@ const Devices: React.FC = () => {
                                         </Input.Group>
                                     </div>
                                     <Text type="secondary" style={{ fontSize: 10 }}>
-                                        Bu URL'larni Hikvision qurilmangizning HTTP Listening sozlamalariga kiriting.
+                                        Bu manzillarni Hikvision qurilmangizning HTTP tinglash sozlamalariga kiriting.
                                     </Text>
                                 </div>
                             ) : (
@@ -318,14 +318,14 @@ const Devices: React.FC = () => {
                     <Form.Item name="name" label="Qurilma nomi" rules={[{ required: true, message: 'Nomni kiriting' }]}>
                         <Input placeholder="Masalan: Asosiy kirish" />
                     </Form.Item>
-                    <Form.Item name="deviceId" label="Device ID (Hikvision'dan)" rules={[{ required: true, message: 'Device ID kiriting' }]}>
+                    <Form.Item name="deviceId" label="Qurilma ID (Hikvision'dan)" rules={[{ required: true, message: 'Qurilma ID kiriting' }]}>
                         <Input placeholder="Qurilmadagi ID" />
                     </Form.Item>
                     <Form.Item name="type" label="Turi" rules={[{ required: true, message: 'Turini tanlang' }]}>
                         <Select 
                             options={[
-                                { value: 'ENTRANCE', label: '🚪 Kirish (ENTRANCE)' }, 
-                                { value: 'EXIT', label: '🚶 Chiqish (EXIT)' }
+                                { value: 'ENTRANCE', label: 'Kirish' }, 
+                                { value: 'EXIT', label: 'Chiqish' }
                             ]} 
                         />
                     </Form.Item>

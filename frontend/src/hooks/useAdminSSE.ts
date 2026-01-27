@@ -64,7 +64,7 @@ export const useAdminSSE = (options: UseAdminSSEOptions = {}) => {
   
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [connectionStats, setConnectionStats] = useState<AdminSSEEvent['connectionStats']>(null);
+  const [connectionStats, setConnectionStats] = useState<AdminSSEEvent['connectionStats'] | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const reconnectAttempts = useRef(0);

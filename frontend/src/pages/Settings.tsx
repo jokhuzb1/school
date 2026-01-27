@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Form, InputNumber, TimePicker, Button, Spin, App, Space } from 'antd';
+import { Card, Form, InputNumber, Button, Spin, App, Space } from 'antd';
 import { 
     SettingOutlined, 
     ClockCircleOutlined, 
@@ -9,7 +9,6 @@ import { useSchool } from '../hooks/useSchool';
 import { schoolsService } from '../services/schools';
 import { PageHeader } from '../components';
 import { StatItem } from '../components/StatItem';
-import dayjs from 'dayjs';
 
 const Settings: React.FC = () => {
     const { schoolId } = useSchool();

@@ -27,7 +27,6 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
-  PercentageOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useSchool } from "../hooks/useSchool";
@@ -170,9 +169,9 @@ const Students: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      message.success("Export muvaffaqiyatli");
+      message.success("Eksport muvaffaqiyatli");
     } catch (err) {
-      message.error("Export xatolik");
+      message.error("Eksport xatolik");
     }
   };
 
@@ -180,13 +179,13 @@ const Students: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file || !schoolId) return;
 
-    const hide = message.loading("Import qilinmoqda...", 0);
+    const hide = message.loading("Yuklanmoqda...", 0);
     try {
       const result = await studentsService.importExcel(schoolId, file);
-      message.success(`${result.imported} ta o'quvchi import qilindi`);
+      message.success(`${result.imported} ta o'quvchi yuklandi`);
       fetchStudents();
     } catch (err) {
-      message.error("Import xatolik. Fayl formatini tekshiring.");
+      message.error("Yuklashda xatolik. Fayl formatini tekshiring.");
     } finally {
       hide();
       e.target.value = ""; // Reset input
@@ -235,7 +234,7 @@ const Students: React.FC = () => {
       render: (_: any, record: Student) => {
         const effectiveStatus = record.todayEffectiveStatus || record.todayStatus;
         if (!effectiveStatus) {
-          return <Tag color="default">—</Tag>;
+          return <Tag color="default">-</Tag>;
         }
         const statusConfig: Record<string, { color: string; text: string; icon: React.ReactNode }> = {
           PRESENT: { color: "green", text: "Kelgan", icon: <CheckCircleOutlined /> },
@@ -245,21 +244,7 @@ const Students: React.FC = () => {
           PENDING: { color: "default", text: "Kutilmoqda", icon: null },
         };
         const config = statusConfig[effectiveStatus] || { color: "default", text: effectiveStatus, icon: null };
-        const time = record.todayFirstScan 
-          ? new Date(record.todayFirstScan).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })
-          : "";
-        return (
-          <Tag color={config.color} icon={config.icon}>
-            {config.text} {time && ()}
-          </Tag>
-        );
-      },
-          LATE: { color: "orange", text: "Kech", icon: <ClockCircleOutlined /> },
-          ABSENT: { color: "red", text: "Kelmagan", icon: <CloseCircleOutlined /> },
-          EXCUSED: { color: "gray", text: "Sababli", icon: null },
-        };
-        const config = statusConfig[record.todayStatus] || { color: "default", text: record.todayStatus, icon: null };
-        const time = record.todayFirstScan 
+        const time = record.todayFirstScan
           ? new Date(record.todayFirstScan).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })
           : "";
         return (
@@ -468,11 +453,11 @@ const Students: React.FC = () => {
             size="small"
             onClick={() => document.getElementById("import-excel")?.click()}
           >
-            Import
+            Yuklash
           </Button>
         </div>
         <Button icon={<DownloadOutlined />} size="small" onClick={handleExport}>
-          Export
+          Eksport
         </Button>
       </PageHeader>
 
@@ -505,7 +490,7 @@ const Students: React.FC = () => {
         cancelText="Bekor"
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
-          <Form.Item name="deviceStudentId" label="Device ID (qurilmadagi)">
+          <Form.Item name="deviceStudentId" label="Qurilma ID (qurilmadagi)">
             <Input placeholder="Qurilmadagi o'quvchi ID" />
           </Form.Item>
           <Form.Item name="name" label="Ism familiya" rules={[{ required: true, message: "Ismni kiriting" }]}>
@@ -530,3 +515,5 @@ const Students: React.FC = () => {
 };
 
 export default Students;
+
+

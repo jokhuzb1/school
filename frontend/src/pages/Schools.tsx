@@ -229,7 +229,7 @@ const Schools: React.FC = () => {
                             <Button size="small" icon={<DeleteOutlined />} danger onClick={(e) => e.stopPropagation()} />
                         </Tooltip>
                     </Popconfirm>
-                    <Tooltip title="Dashboard">
+                    <Tooltip title="Boshqaruv">
                         <Button 
                             size="small" 
                             icon={<RightOutlined />} 
@@ -306,7 +306,7 @@ const Schools: React.FC = () => {
             >
                 <Form form={form} layout="vertical" onFinish={handleSubmit}>
                     {/* Maktab ma'lumotlari */}
-                    <AntDivider orientation="left" style={{ margin: '8px 0 16px' }}>
+                    <AntDivider style={{ margin: '8px 0 16px' }}>
                         <BankOutlined /> Maktab ma'lumotlari
                     </AntDivider>
                     
@@ -347,19 +347,19 @@ const Schools: React.FC = () => {
                         
                         <Form.Item 
                             name="absenceCutoffMinutes" 
-                            label="Kelmagan deb belgilash (minut)"
+                        label="Kelmagan deb belgilash (daqiqa)"
                             style={{ width: 220 }}
                             initialValue={180}
-                            tooltip="Dars boshlangandan keyin necha minutdan so'ng 'Kelmagan' deb belgilanadi"
+                            tooltip="Dars boshlangandan keyin necha daqiqadan so'ng 'Kelmagan' deb belgilanadi"
                         >
-                            <InputNumber min={0} max={600} style={{ width: '100%' }} placeholder="180" addonAfter="min" />
+                            <InputNumber min={0} max={600} style={{ width: '100%' }} placeholder="180" addonAfter="daq" />
                         </Form.Item>
                     </Space>
 
                     {/* Admin ma'lumotlari - faqat yangi maktab qo'shganda */}
                     {!editingId && (
                         <>
-                            <AntDivider orientation="left" style={{ margin: '16px 0' }}>
+                            <AntDivider style={{ margin: '16px 0' }}>
                                 <UserOutlined /> Admin hisobi
                             </AntDivider>
                             
@@ -376,13 +376,13 @@ const Schools: React.FC = () => {
                             
                             <Form.Item 
                                 name="adminEmail" 
-                                label="Admin email"
+                                label="Admin elektron pochta"
                                 rules={[
-                                    { required: true, message: 'Email kiriting' },
-                                    { type: 'email', message: 'Noto\'g\'ri email formati' },
+                                    { required: true, message: 'Elektron pochta kiriting' },
+                                    { type: 'email', message: 'Noto\'g\'ri elektron pochta formati' },
                                     { 
                                         pattern: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-                                        message: 'To\'g\'ri email kiriting (masalan: admin@maktab.uz)'
+                                        message: 'To\'g\'ri elektron pochta kiriting (masalan: admin@maktab.uz)'
                                     }
                                 ]}
                             >
@@ -429,9 +429,9 @@ const Schools: React.FC = () => {
                     {editingId && (
                         <Form.Item 
                             name="email" 
-                            label="Maktab email"
+                            label="Maktab elektron pochta"
                             rules={[
-                                { type: 'email', message: 'Noto\'g\'ri email formati' }
+                                { type: 'email', message: 'Noto\'g\'ri elektron pochta formati' }
                             ]}
                         >
                             <Input prefix={<MailOutlined />} placeholder="maktab@example.com" />

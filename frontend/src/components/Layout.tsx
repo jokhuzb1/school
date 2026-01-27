@@ -38,8 +38,8 @@ const Layout: React.FC = () => {
     };
 
     const userMenuItems = [
-        { key: 'profile', label: 'Profile', icon: <UserOutlined /> },
-        { key: 'logout', label: 'Logout', icon: <LogoutOutlined />, onClick: handleLogout },
+        { key: 'profile', label: 'Profil', icon: <UserOutlined /> },
+        { key: 'logout', label: 'Chiqish', icon: <LogoutOutlined />, onClick: handleLogout },
     ];
 
     // Menu items based on role
@@ -47,7 +47,7 @@ const Layout: React.FC = () => {
         // SuperAdmin o'z panelida (maktab ko'rmayapti)
         if (isSuperAdmin && !isViewingSchool) {
             return [
-                { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
+                { key: '/dashboard', icon: <DashboardOutlined />, label: 'Boshqaruv' },
                 { key: '/schools', icon: <BankOutlined />, label: 'Maktablar' },
                 { key: '/settings', icon: <SettingOutlined />, label: 'Sozlamalar' },
             ];
@@ -59,7 +59,7 @@ const Layout: React.FC = () => {
 
         // Base items for all school users
         const items = [
-            { key: `${prefix}/dashboard`, icon: <DashboardOutlined />, label: 'Dashboard' },
+            { key: `${prefix}/dashboard`, icon: <DashboardOutlined />, label: 'Boshqaruv' },
             { key: `${prefix}/students`, icon: <TeamOutlined />, label: "O'quvchilar" },
             { key: `${prefix}/attendance`, icon: <CalendarOutlined />, label: 'Davomat' },
             { key: `${prefix}/classes`, icon: <BookOutlined />, label: 'Sinflar' },
@@ -85,7 +85,7 @@ const Layout: React.FC = () => {
         
         // SuperAdmin uchun "Orqaga" tugmasi
         if (isSuperAdmin && isViewingSchool) {
-            items.unshift({ key: '/schools', icon: <BankOutlined />, label: '← Maktablar' });
+            items.unshift({ key: '/schools', icon: <BankOutlined />, label: '<- Maktablar' });
         }
         
         return items;
@@ -112,7 +112,7 @@ const Layout: React.FC = () => {
                     borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
                 }}>
                     <h2 style={{ margin: 0, color: themeToken.colorPrimary, fontSize: collapsed ? 16 : 18 }}>
-                        {collapsed ? 'AS' : 'Attendance'}
+                        {collapsed ? 'AS' : 'Davomat'}
                     </h2>
                 </div>
                 <Menu

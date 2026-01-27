@@ -50,16 +50,16 @@ const PageHeader: React.FC<PageHeaderProps> = ({
                     </>
                 )}
 
-                {/* Live status */}
+                {/* Jonli status */}
                 {showLiveStatus && (
                     <>
-                        <Tooltip title={isConnected ? 'Real-time ulangan' : 'Offline'}>
+                        <Tooltip title={isConnected ? 'Real vaqt ulangan' : 'Oflayn'}>
                             <Badge
                                 status={isConnected ? 'success' : 'error'}
                                 text={
                                     <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
                                         <WifiOutlined style={{ color: isConnected ? '#52c41a' : '#ff4d4f' }} />
-                                        {isConnected ? 'Live' : 'Offline'}
+                                        {isConnected ? 'Jonli' : 'Oflayn'}
                                     </span>
                                 }
                             />
