@@ -216,7 +216,7 @@ const Users: React.FC = () => {
       key: "role",
       render: (role: string) => (
         <Tag color={role === "TEACHER" ? "blue" : "green"}>
-          {role === "TEACHER" ? "O'qituvchi" : "Qorovul"}
+          {role === "TEACHER" ? "O'qituvchi" : "Nazoratchi"}
         </Tag>
       ),
     },
@@ -281,9 +281,9 @@ const Users: React.FC = () => {
         <StatItem
           icon={<SafetyCertificateOutlined />}
           value={guardCount}
-          label="qorovul"
+          label="nazoratchi"
           color="#52c41a"
-          tooltip="Qorovullar soni"
+          tooltip="Nazoratchilar soni"
         />
         <Divider />
         <Button
@@ -350,7 +350,7 @@ const Users: React.FC = () => {
               placeholder="Tanlang"
               options={[
                 { value: "TEACHER", label: "O'qituvchi" },
-                { value: "GUARD", label: "Qorovul" },
+                { value: "GUARD", label: "Nazoratchi" },
               ]}
             />
           </Form.Item>
