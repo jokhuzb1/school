@@ -7,6 +7,7 @@ import { sendHttpError } from "../utils/httpErrors";
 import { addDaysUtc, getDateOnlyInZone } from "../utils/date";
 import { getActiveClassIds, getNowMinutesInZone, getStartedClassIds, splitNoScanCountsByClass } from "../utils/attendanceStatus";
 import { logAudit } from "../utils/audit";
+import { getAttendanceCountsByClass } from "../services/attendanceStats";
 
 export default async function (fastify: FastifyInstance) {
   fastify.get(
@@ -64,7 +65,7 @@ export default async function (fastify: FastifyInstance) {
             };
           }
 
-          const [attendanceStats, activeStudents, classStudentCounts, attendanceRecords] = await Promise.all([
+          const [attendanceStats, activeStudents, classStudentCounts, attendanceCounts] = await Promise.all([
             prisma.dailyAttendance.groupBy({
               by: ["status"],
               where: {
@@ -82,16 +83,11 @@ export default async function (fastify: FastifyInstance) {
               where: { schoolId: school.id, isActive: true, classId: { in: effectiveClassIds } },
               _count: true,
             }),
-            prisma.dailyAttendance.findMany({
-              where: {
-                schoolId: school.id,
-                date: { gte: today, lt: tomorrow },
-                student: { classId: { in: effectiveClassIds } },
-              },
-              select: {
-                studentId: true,
-                student: { select: { classId: true } },
-              },
+            getAttendanceCountsByClass({
+              schoolId: school.id,
+              dateStart: today,
+              dateEnd: tomorrow,
+              classIds: effectiveClassIds,
             }),
           ]);
 
@@ -116,19 +112,8 @@ export default async function (fastify: FastifyInstance) {
             }
           });
 
-          const classAttendanceMap = new Map<string, number>();
-          let unassignedAttended = 0;
-          attendanceRecords.forEach((row) => {
-            const classId = row.student?.classId || null;
-            if (classId) {
-              classAttendanceMap.set(
-                classId,
-                (classAttendanceMap.get(classId) || 0) + 1,
-              );
-            } else {
-              unassignedAttended += 1;
-            }
-          });
+          const classAttendanceMap = attendanceCounts.classAttendanceMap;
+          const unassignedAttended = attendanceCounts.unassignedAttended;
 
           const classesForSplit = classes.filter((cls) =>
             effectiveClassIds.includes(cls.id),

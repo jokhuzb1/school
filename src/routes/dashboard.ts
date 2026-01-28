@@ -21,6 +21,7 @@ import {
   getStartedClassIds,
   splitNoScanCountsByClass,
 } from "../utils/attendanceStatus";
+import { getAttendanceCountsByClass } from "../services/attendanceStats";
 
 // ✅ OPTIMIZED: SuperAdmin uchun barcha maktablar statistikasi
 export async function adminDashboardRoutes(fastify: FastifyInstance) {
@@ -111,7 +112,7 @@ export async function adminDashboardRoutes(fastify: FastifyInstance) {
               currentlyInSchoolCount,
               weeklyAttendance,
               classStudentCounts,
-              attendanceRecords,
+              attendanceCounts,
               daysCount,
             ] = await Promise.all([
               prisma.dailyAttendance.groupBy({
@@ -151,18 +152,16 @@ export async function adminDashboardRoutes(fastify: FastifyInstance) {
                 _count: true,
               }),
               isToday
-                ? prisma.dailyAttendance.findMany({
-                    where: {
-                      schoolId: school.id,
-                      date: { gte: today, lt: addDaysUtc(today, 1) },
-                      student: { classId: { in: effectiveClassIds } },
-                    },
-                    select: {
-                      studentId: true,
-                      student: { select: { classId: true } },
-                    },
+                ? getAttendanceCountsByClass({
+                    schoolId: school.id,
+                    dateStart: today,
+                    dateEnd: addDaysUtc(today, 1),
+                    classIds: effectiveClassIds,
                   })
-                : Promise.resolve([]),
+                : Promise.resolve({
+                    classAttendanceMap: new Map<string, number>(),
+                    unassignedAttended: 0,
+                  }),
               isSingleDay
                 ? Promise.resolve(1)
                 : prisma
@@ -187,20 +186,9 @@ export async function adminDashboardRoutes(fastify: FastifyInstance) {
               }
             });
 
-            const classAttendanceMap = new Map<string, number>();
-            if (isToday) {
-              (attendanceRecords as Array<{ student?: { classId: string | null } }>).forEach(
-                (row) => {
-                  const classId = row.student?.classId || null;
-                  if (classId) {
-                    classAttendanceMap.set(
-                      classId,
-                      (classAttendanceMap.get(classId) || 0) + 1,
-                    );
-                  }
-                },
-              );
-            }
+            const classAttendanceMap = isToday
+              ? attendanceCounts.classAttendanceMap
+              : new Map<string, number>();
 
             const classesForSplit = classes.filter((cls) =>
               effectiveClassIds.includes(cls.id),
@@ -570,7 +558,7 @@ export default async function (fastify: FastifyInstance) {
           arrivedStudentIds,
           totalAttendanceDays,
           classStudentCounts,
-          attendanceRecords,
+          attendanceCounts,
         ] = await Promise.all([
           // Total students
           prisma.student.count({ where: studentFilter }),
@@ -647,18 +635,16 @@ export default async function (fastify: FastifyInstance) {
             : Promise.resolve([]),
           // Attendance records by class for today (any status) - only for today
           isToday
-            ? prisma.dailyAttendance.findMany({
-                where: {
-                  schoolId,
-                  date: { gte: today, lt: todayEnd },
-                  student: { classId: { in: classIdFilterList } },
-                },
-                select: {
-                  studentId: true,
-                  student: { select: { classId: true } },
-                },
+            ? getAttendanceCountsByClass({
+                schoolId,
+                dateStart: today,
+                dateEnd: todayEnd,
+                classIds: classIdFilterList,
               })
-            : Promise.resolve([]),
+            : Promise.resolve({
+                classAttendanceMap: new Map<string, number>(),
+                unassignedAttended: 0,
+              }),
         ]);
 
         const daysCount =
@@ -803,19 +789,8 @@ export default async function (fastify: FastifyInstance) {
           }
         });
 
-        const classAttendanceMap = new Map<string, number>();
-        let unassignedAttended = 0;
-        (attendanceRecords as Array<{ student?: { classId: string | null } }>).forEach((row) => {
-          const classId = row.student?.classId || null;
-          if (classId) {
-            classAttendanceMap.set(
-              classId,
-              (classAttendanceMap.get(classId) || 0) + 1,
-            );
-          } else {
-            unassignedAttended += 1;
-          }
-        });
+        const classAttendanceMap = attendanceCounts.classAttendanceMap;
+        let unassignedAttended = attendanceCounts.unassignedAttended;
 
         const classesForSplit = classesForBreakdown.map((c) => ({
           id: c.id,
