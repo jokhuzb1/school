@@ -99,7 +99,8 @@ export function registerJobs(server: any) {
               AND NOT EXISTS (
                 SELECT 1 FROM "DailyAttendance" da 
                 WHERE da."studentId" = s.id 
-                  AND da."date" = ${today}::timestamp
+                  AND da."date" >= ${today}
+                  AND da."date" < ${addDaysUtc(today, 1)}
               )
           `;
 

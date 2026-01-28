@@ -4,7 +4,6 @@ import {
   Tag,
   Spin,
   Empty,
-  Tooltip,
   Typography,
   Table,
   Popover,
@@ -18,6 +17,7 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
+  FileTextOutlined,
   BankOutlined,
   CalendarOutlined,
   WarningOutlined,
@@ -38,8 +38,11 @@ import {
 } from "recharts";
 import { useNavigate } from "react-router-dom";
 import { dashboardService } from "../services/dashboard";
-import type { PeriodType } from "../types";
+import type { PeriodType, AttendanceScope } from "../types";
 import { useAdminSSE } from "../hooks/useAdminSSE";
+import { PageHeader } from "../components/PageHeader";
+import { StatItem, StatGroup } from "../components/StatItem";
+import { StatusBar } from "../components";
 import dayjs from "dayjs";
 import debounce from "lodash/debounce";
 
@@ -54,6 +57,7 @@ const PERIOD_OPTIONS = [
   { label: 'Oy', value: 'month' },
   { label: 'Yil', value: 'year' },
 ];
+const AUTO_REFRESH_MS = 60000;
 
 interface SchoolStats {
   id: string;
@@ -65,6 +69,9 @@ interface SchoolStats {
   presentToday: number;
   lateToday: number;
   absentToday: number;
+  excusedToday?: number;
+  pendingEarlyCount?: number;
+  latePendingCount?: number;
   currentlyInSchool: number;
   attendancePercent: number;
 }
@@ -76,6 +83,9 @@ interface AdminDashboardData {
     presentToday: number;
     lateToday: number;
     absentToday: number;
+    excusedToday?: number;
+    pendingEarlyCount?: number;
+    latePendingCount?: number;
     currentlyInSchool: number;
     attendancePercent: number;
   };
@@ -99,35 +109,49 @@ const SuperAdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [data, setData] = useState<AdminDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState(dayjs());
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   
   // Vaqt filterlari
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>('today');
   const [customDateRange, setCustomDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  const [attendanceScope, setAttendanceScope] = useState<AttendanceScope>('started');
   
   // Bugunmi tekshirish (SSE va real-time uchun)
   const isToday = selectedPeriod === 'today';
 
+  const refreshData = useCallback(async (withLoading = false) => {
+    if (withLoading) {
+      setLoading(true);
+    }
+    try {
+      const filters: any = { period: selectedPeriod };
+      if (selectedPeriod === 'custom' && customDateRange) {
+        filters.startDate = customDateRange[0].format('YYYY-MM-DD');
+        filters.endDate = customDateRange[1].format('YYYY-MM-DD');
+      }
+      if (selectedPeriod === 'today') {
+        filters.scope = attendanceScope;
+      }
+      const result = await dashboardService.getAdminStats(filters);
+      setData(result);
+      setLastUpdate(new Date());
+    } catch (err) {
+      console.error("Failed to refresh admin dashboard:", err);
+    } finally {
+      if (withLoading) {
+        setLoading(false);
+      }
+    }
+  }, [selectedPeriod, customDateRange, attendanceScope]);
+
   // Debounced fetch - har bir eventda emas, 5 sekundda bir marta
   const debouncedFetchData = useMemo(
     () =>
-      debounce(async () => {
-        try {
-          const filters: any = { period: selectedPeriod };
-          if (selectedPeriod === 'custom' && customDateRange) {
-            filters.startDate = customDateRange[0].format('YYYY-MM-DD');
-            filters.endDate = customDateRange[1].format('YYYY-MM-DD');
-          }
-          const result = await dashboardService.getAdminStats(filters);
-          setData(result);
-          setLastUpdate(new Date());
-        } catch (err) {
-          console.error("Failed to refresh admin dashboard:", err);
-        }
+      debounce(() => {
+        refreshData();
       }, 5000),
-    [selectedPeriod, customDateRange]
+    [refreshData]
   );
 
   // SSE event handler - local state update + debounced API call (faqat bugun uchun)
@@ -188,40 +212,26 @@ const SuperAdminDashboard: React.FC = () => {
   }, [data, debouncedFetchData, isToday]);
 
   // SSE connection (faqat bugun uchun faol)
-  const { isConnected, connectionStats } = useAdminSSE({
+  const { isConnected } = useAdminSSE({
     onAttendanceEvent: handleAttendanceEvent,
     enabled: isToday,
   });
 
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(dayjs()), 60000);
-    return () => clearInterval(timer);
-  }, []);
+    refreshData(true);
+    // Reset realtime events when period changes
+    if (!isToday) {
+      setRealtimeEvents([]);
+    }
+  }, [refreshData, isToday]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const filters: any = { period: selectedPeriod };
-        if (selectedPeriod === 'custom' && customDateRange) {
-          filters.startDate = customDateRange[0].format('YYYY-MM-DD');
-          filters.endDate = customDateRange[1].format('YYYY-MM-DD');
-        }
-        const result = await dashboardService.getAdminStats(filters);
-        setData(result);
-        setLastUpdate(new Date());
-        // Reset realtime events when period changes
-        if (!isToday) {
-          setRealtimeEvents([]);
-        }
-      } catch (err) {
-        console.error("Failed to load admin dashboard:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [selectedPeriod, customDateRange, isToday]);
+    if (!isToday) return;
+    const timer = setInterval(() => {
+      refreshData();
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [isToday, refreshData]);
 
   if (loading) {
     return (
@@ -287,24 +297,22 @@ const SuperAdminDashboard: React.FC = () => {
     },
     {
       title: "Davomat",
-      dataIndex: "attendancePercent",
       key: "attendance",
       width: 120,
-      sorter: (a: SchoolStats, b: SchoolStats) => a.attendancePercent - b.attendancePercent,
-      render: (percent: number) => {
-        const status = getStatus(percent);
-        return (
-          <div style={{ 
-            background: `${status.color}15`, 
-            padding: "4px 8px", 
-            borderRadius: 4,
-            textAlign: "center",
-            border: `1px solid ${status.color}30`
-          }}>
-            <Text strong style={{ color: status.color, fontSize: 16 }}>{percent}%</Text>
-          </div>
-        );
-      },
+      sorter: (a: SchoolStats, b: SchoolStats) =>
+        a.attendancePercent - b.attendancePercent,
+      render: (_: any, record: SchoolStats) => (
+        <StatusBar
+          total={record.totalStudents}
+          present={record.presentToday}
+          late={record.lateToday}
+          absent={record.absentToday}
+          pendingEarly={record.pendingEarlyCount || 0}
+          pendingLate={record.latePendingCount || 0}
+          excused={record.excusedToday || 0}
+          height={10}
+        />
+      ),
     },
     {
       title: "Kelgan",
@@ -317,7 +325,7 @@ const SuperAdminDashboard: React.FC = () => {
       ),
     },
     {
-      title: "Kech",
+      title: "Kech qoldi",
       dataIndex: "lateToday",
       key: "late",
       width: 70,
@@ -328,7 +336,7 @@ const SuperAdminDashboard: React.FC = () => {
       ) : <Text type="secondary">-</Text>,
     },
     {
-      title: "Yo'q",
+      title: "Kelmadi",
       dataIndex: "absentToday",
       key: "absent",
       width: 70,
@@ -344,7 +352,11 @@ const SuperAdminDashboard: React.FC = () => {
       width: 100,
       render: (_: any, record: SchoolStats) => {
         const status = getStatus(record.attendancePercent);
-        const notPresent = record.totalStudents - record.presentToday;
+        const notPresent =
+          record.totalStudents -
+          (record.presentToday +
+            record.lateToday +
+            (record.excusedToday || 0));
         
         return (
           <Popover
@@ -361,16 +373,26 @@ const SuperAdminDashboard: React.FC = () => {
                   <Text strong>{record.totalStudents}</Text>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text type="secondary">Kelganlar:</Text>
-                  <Text strong style={{ color: "#52c41a" }}>{record.presentToday} ({record.attendancePercent}%)</Text>
+                  <Text type="secondary">Kelganlar (jami):</Text>
+                  <Text strong style={{ color: "#52c41a" }}>
+                    {record.presentToday + record.lateToday} ({record.attendancePercent}%)
+                  </Text>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text type="secondary">Kech qolganlar:</Text>
-                  <Text strong style={{ color: "#faad14" }}>{record.lateToday}</Text>
+                  <Text type="secondary">Kech qoldi:</Text>
+                  <Text strong style={{ color: "#fa8c16" }}>{record.lateToday}</Text>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text type="secondary">Kelmaganlar:</Text>
+                  <Text type="secondary">Kechikmoqda:</Text>
+                  <Text strong style={{ color: "#fadb14" }}>{record.latePendingCount || 0}</Text>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text type="secondary">Kelmadi:</Text>
                   <Text strong style={{ color: "#ff4d4f" }}>{record.absentToday}</Text>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text type="secondary">Hali kelmagan:</Text>
+                  <Text strong style={{ color: "#bfbfbf" }}>{record.pendingEarlyCount || 0}</Text>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text type="secondary">Hozir maktabda:</Text>
@@ -378,9 +400,9 @@ const SuperAdminDashboard: React.FC = () => {
                 </div>
                 <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 8, marginTop: 8 }}>
                   <Text type="secondary" style={{ fontSize: 11 }}>
-                    {status.text === "Yaxshi" && "Davomat 90% dan yuqori - ajoyib!"}
-                    {status.text === "Normal" && "Davomat 75-90% orasida - yaxshi"}
-                    {status.text === "Muammo" && `Davomat 75% dan past - ${notPresent} o'quvchi kelmagan`}
+                    {status.text === "Yaxshi" && "Kelganlar 90% dan yuqori - ajoyib!"}
+                    {status.text === "Normal" && "Kelganlar 75-90% orasida - yaxshi"}
+                    {status.text === "Muammo" && `Kelganlar 75% dan past - ${notPresent} o'quvchi kelmagan`}
                   </Text>
                 </div>
               </div>
@@ -406,24 +428,163 @@ const SuperAdminDashboard: React.FC = () => {
 
   return (
     <div>
-      {/* Kompakt Header - School Admin uslubida */}
-      <Card size="small" style={{ marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          {/* Vaqt filterlari */}
-          <Segmented
-            size="small"
-            value={selectedPeriod}
-            onChange={(value) => {
-              setSelectedPeriod(value as PeriodType);
-              if (value !== 'custom') setCustomDateRange(null);
-            }}
-            options={PERIOD_OPTIONS}
+      {/* Kompakt Header - Standart PageHeader uslubida */}
+      <PageHeader 
+        showTime 
+        showLiveStatus={isToday} 
+        isConnected={isConnected}
+        extra={
+          lastUpdate && (
+            <Text type="secondary" style={{ fontSize: 10 }}>
+              (yangilandi: {dayjs(lastUpdate).format("HH:mm:ss")})
+            </Text>
+          )
+        }
+      >
+        <StatGroup>
+          <StatItem
+            icon={<BankOutlined />}
+            label="maktab"
+            value={totals.totalSchools}
+            color="#722ed1"
+            tooltip="Jami maktablar"
           />
+          <StatItem
+            icon={<TeamOutlined />}
+            label="o'quvchi"
+            value={totals.totalStudents}
+            color="#1890ff"
+            tooltip="Jami o'quvchilar"
+          />
+          <StatItem
+            icon={<CheckCircleOutlined />}
+            label="kelgan %"
+            value={`${totals.attendancePercent}%`}
+            color="#52c41a"
+            tooltip="Kelganlar foizi"
+          />
+          <StatItem
+            icon={<CheckCircleOutlined />}
+            label="kelgan"
+            value={totals.presentToday}
+            color="#52c41a"
+            tooltip="Kelganlar"
+          />
+          <StatItem
+            icon={<ClockCircleOutlined />}
+            label="kech qoldi"
+            value={totals.lateToday}
+            color="#fa8c16"
+            tooltip="Kech qoldi (scan bilan)"
+          />
+          <StatItem
+            icon={<CloseCircleOutlined />}
+            label="kelmadi"
+            value={totals.absentToday}
+            color="#ff4d4f"
+            tooltip="Kelmadi"
+          />
+          {(totals.excusedToday || 0) > 0 && (
+            <StatItem
+              icon={<FileTextOutlined />}
+              label="sababli"
+              value={totals.excusedToday || 0}
+              color="#8c8c8c"
+              tooltip="Sababli"
+            />
+          )}
+          {(totals.latePendingCount || 0) > 0 && (
+            <StatItem
+              icon={<ClockCircleOutlined />}
+              label="kechikmoqda"
+              value={totals.latePendingCount || 0}
+              color="#fadb14"
+              tooltip="Dars boshlangan, cutoff o'tmagan"
+            />
+          )}
+          {(totals.pendingEarlyCount || 0) > 0 && (
+            <StatItem
+              icon={<CloseCircleOutlined />}
+              label="hali kelmagan"
+              value={totals.pendingEarlyCount || 0}
+              color="#bfbfbf"
+              tooltip="Dars hali boshlanmagan"
+            />
+          )}
+          {problemSchools.length > 0 && (
+            <StatItem
+              icon={<WarningOutlined />}
+              label="muammo"
+              value={problemSchools.length}
+              color="#ff4d4f"
+              tooltip="Muammoli maktablar"
+              highlight
+              onClick={() => {}} // Popover handle by own
+            />
+          )}
+        </StatGroup>
+      </PageHeader>
+
+      {/* Filterlar satri */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#fff",
+              padding: "4px 8px",
+              borderRadius: 8,
+              border: "1px solid #f0f0f0",
+            }}
+          >
+            <CalendarOutlined style={{ color: "#8c8c8c" }} />
+            <Segmented
+              size="middle"
+              value={selectedPeriod}
+              onChange={(value) => {
+                setSelectedPeriod(value as PeriodType);
+                if (value !== 'custom') setCustomDateRange(null);
+              }}
+              options={PERIOD_OPTIONS}
+              style={{ background: "transparent" }}
+            />
+          </div>
+
+          {isToday && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                background: "#fff",
+                padding: "4px 8px",
+                borderRadius: 8,
+                border: "1px solid #f0f0f0",
+              }}
+            >
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Ko'rinish:
+              </Text>
+              <Segmented
+                size="middle"
+                value={attendanceScope}
+                onChange={(value) =>
+                  setAttendanceScope(value as AttendanceScope)
+                }
+                options={[
+                  { label: "Boshlangan", value: "started" },
+                  { label: "Faol", value: "active" },
+                ]}
+                style={{ background: "transparent" }}
+              />
+            </div>
+          )}
           
           {/* Custom date range picker */}
-          {selectedPeriod === 'custom' || customDateRange ? (
+          {(selectedPeriod === 'custom' || customDateRange) && (
             <RangePicker
-              size="small"
+              size="middle"
               value={customDateRange}
               onChange={(dates) => {
                 if (dates && dates[0] && dates[1]) {
@@ -435,100 +596,12 @@ const SuperAdminDashboard: React.FC = () => {
                 }
               }}
               format="DD.MM.YYYY"
-              style={{ width: 220 }}
+              style={{ width: 240, borderRadius: 8 }}
             />
-          ) : null}
-
-          <div style={{ width: 1, height: 24, background: "#e8e8e8" }} />
-
-          {/* Real vaqt ulanish holati (faqat bugun uchun) */}
-          {isToday && (
-            <Tooltip title={isConnected ? `Real vaqt ulanishi faol${connectionStats ? ` (${connectionStats.total} ulanish)` : ''}` : "Real vaqt ulanishi yo'q"}>
-              <div style={{ 
-                display: "flex", 
-                alignItems: "center", 
-                gap: 4,
-                padding: "2px 8px",
-                borderRadius: 4,
-                background: isConnected ? "#f6ffed" : "#fff2f0",
-                border: `1px solid ${isConnected ? "#b7eb8f" : "#ffccc7"}`
-              }}>
-                <Badge status={isConnected ? "success" : "error"} />
-                <WifiOutlined style={{ color: isConnected ? "#52c41a" : "#ff4d4f", fontSize: 12 }} />
-                {isConnected && <SyncOutlined spin style={{ color: "#52c41a", fontSize: 10 }} />}
-              </div>
-            </Tooltip>
           )}
 
-          {/* Vaqt */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <ClockCircleOutlined style={{ fontSize: 16, color: "#1890ff" }} />
-            <Text strong style={{ fontSize: 16 }}>{currentTime.format("HH:mm")}</Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              <CalendarOutlined style={{ marginRight: 4 }} />
-              {currentTime.format("DD MMM, ddd")}
-            </Text>
-            {lastUpdate && (
-              <Text type="secondary" style={{ fontSize: 10, marginLeft: 8 }}>
-                (yangilandi: {dayjs(lastUpdate).format("HH:mm:ss")})
-              </Text>
-            )}
-          </div>
-
-          <div style={{ width: 1, height: 24, background: "#e8e8e8" }} />
-
-          {/* Statistikalar */}
-          <Tooltip title="Jami maktablar">
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <BankOutlined style={{ color: "#722ed1" }} />
-              <Text strong style={{ fontSize: 16, color: "#722ed1" }}>{totals.totalSchools}</Text>
-              <Text type="secondary" style={{ fontSize: 11 }}>maktab</Text>
-            </div>
-          </Tooltip>
-
-          <Tooltip title="Jami o'quvchilar">
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <TeamOutlined style={{ color: "#1890ff" }} />
-              <Text strong style={{ fontSize: 16, color: "#1890ff" }}>{totals.totalStudents}</Text>
-              <Text type="secondary" style={{ fontSize: 11 }}>o'quvchi</Text>
-            </div>
-          </Tooltip>
-
-          <Tooltip title={`Umumiy davomat`}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <CheckCircleOutlined style={{ color: "#52c41a" }} />
-              <Text strong style={{ fontSize: 16, color: "#52c41a" }}>{totals.attendancePercent}%</Text>
-              <Text type="secondary" style={{ fontSize: 11 }}>davomat</Text>
-            </div>
-          </Tooltip>
-
-          <Tooltip title="Kelganlar">
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <CheckCircleOutlined style={{ color: "#52c41a" }} />
-              <Text strong style={{ fontSize: 16, color: "#52c41a" }}>{totals.presentToday}</Text>
-              <Text type="secondary" style={{ fontSize: 11 }}>kelgan</Text>
-            </div>
-          </Tooltip>
-
-          <Tooltip title="Kech qolganlar">
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <ClockCircleOutlined style={{ color: "#faad14" }} />
-              <Text strong style={{ fontSize: 16, color: "#faad14" }}>{totals.lateToday}</Text>
-              <Text type="secondary" style={{ fontSize: 11 }}>kech</Text>
-            </div>
-          </Tooltip>
-
-          <Tooltip title="Kelmaganlar">
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <CloseCircleOutlined style={{ color: "#ff4d4f" }} />
-              <Text strong style={{ fontSize: 16, color: "#ff4d4f" }}>{totals.absentToday}</Text>
-              <Text type="secondary" style={{ fontSize: 11 }}>yo'q</Text>
-            </div>
-          </Tooltip>
-
           {problemSchools.length > 0 && (
-            <>
-              <div style={{ width: 1, height: 20, background: "#e8e8e8" }} />
+            <div style={{ marginLeft: "auto" }}>
               <Popover
                 title={<span style={{ color: "#ff4d4f" }}><WarningOutlined /> Muammoli maktablar ({problemSchools.length})</span>}
                 content={
@@ -556,24 +629,18 @@ const SuperAdminDashboard: React.FC = () => {
                         <Tag color="error" style={{ margin: 0 }}>{s.attendancePercent}%</Tag>
                       </div>
                     ))}
-                    <Text type="secondary" style={{ fontSize: 11, marginTop: 8, display: "block" }}>
-                      Maktabni bosib batafsil ko'ring
-                    </Text>
                   </div>
                 }
                 trigger="hover"
                 placement="bottomRight"
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff2f0", padding: "4px 10px", borderRadius: 6, cursor: "pointer" }}>
-                  <WarningOutlined style={{ color: "#ff4d4f" }} />
-                  <Text strong style={{ fontSize: 16, color: "#ff4d4f" }}>{problemSchools.length}</Text>
-                  <Text type="secondary" style={{ fontSize: 11 }}>muammo</Text>
-                </div>
+                <Tag color="error" style={{ cursor: "pointer", padding: "4px 12px", borderRadius: 6 }}>
+                  <WarningOutlined /> {problemSchools.length} ta muammoli maktab
+                </Tag>
               </Popover>
-            </>
+            </div>
           )}
-        </div>
-      </Card>
+      </div>
 
       {/* Maktablar reytingi jadvali */}
       <Card 
@@ -606,8 +673,8 @@ const SuperAdminDashboard: React.FC = () => {
                 <YAxis tick={{ fontSize: 12 }} />
                 <RechartsTooltip />
                 <Bar dataKey="present" fill="#52c41a" name="Kelgan" />
-                <Bar dataKey="late" fill="#faad14" name="Kech" />
-                <Bar dataKey="absent" fill="#ff4d4f" name="Kelmagan" />
+                <Bar dataKey="late" fill="#fa8c16" name="Kech qoldi" />
+                <Bar dataKey="absent" fill="#ff4d4f" name="Kelmadi" />
               </BarChart>
             </ResponsiveContainer>
           ) : (

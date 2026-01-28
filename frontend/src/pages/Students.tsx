@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import debounce from "lodash/debounce";
 import {
   Table,
   Button,
@@ -15,6 +16,7 @@ import {
   Segmented,
   DatePicker,
   Progress,
+  Switch,
 } from "antd";
 import {
   PlusOutlined,
@@ -42,6 +44,7 @@ import dayjs from "dayjs";
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
+const AUTO_REFRESH_MS = 60000;
 
 // Vaqt filterlari opsiyalari
 const PERIOD_OPTIONS = [
@@ -60,12 +63,18 @@ const Students: React.FC = () => {
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [classFilter, setClassFilter] = useState<string | undefined>();
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [importErrors, setImportErrors] = useState<
+    Array<{ row: number; message: string }>
+  >([]);
+  const [importErrorOpen, setImportErrorOpen] = useState(false);
+  const [allowCreateMissingClass, setAllowCreateMissingClass] = useState(false);
 
   // Vaqt filterlari
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>("today");
@@ -76,9 +85,11 @@ const Students: React.FC = () => {
     null,
   );
 
-  const fetchStudents = async () => {
+  const fetchStudents = useCallback(async (silent = false) => {
     if (!schoolId) return;
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const params: any = {
         page,
@@ -99,11 +110,13 @@ const Students: React.FC = () => {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
-  };
+  }, [schoolId, page, search, classFilter, selectedPeriod, customDateRange]);
 
-  const fetchClasses = async () => {
+  const fetchClasses = useCallback(async () => {
     if (!schoolId) return;
     try {
       const data = await classesService.getAll(schoolId);
@@ -111,12 +124,35 @@ const Students: React.FC = () => {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [schoolId]);
 
   useEffect(() => {
     fetchStudents();
     fetchClasses();
-  }, [schoolId, page, search, classFilter, selectedPeriod, customDateRange]);
+  }, [fetchStudents, fetchClasses]);
+
+  useEffect(() => {
+    if (selectedPeriod !== "today") return;
+    const timer = setInterval(() => {
+      fetchStudents(true);
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [selectedPeriod, fetchStudents]);
+
+  const debouncedSetSearch = useMemo(
+    () =>
+      debounce((value: string) => {
+        setSearch(value);
+        setPage(1);
+      }, 350),
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      debouncedSetSearch.cancel();
+    };
+  }, [debouncedSetSearch]);
 
   // Statistikalar - API'dan kelgan stats'dan olish
   const stats = useMemo(() => {
@@ -136,10 +172,22 @@ const Students: React.FC = () => {
     const excused = students.filter(
       (s) => (s.todayEffectiveStatus || s.todayStatus) === "EXCUSED",
     ).length;
-    const pending = students.filter(
-      (s) => (s.todayEffectiveStatus || s.todayStatus) === "PENDING",
+    const pendingEarly = students.filter(
+      (s) => (s.todayEffectiveStatus || s.todayStatus) === "PENDING_EARLY",
     ).length;
-    return { total, present, late, absent, excused, pending };
+    const pendingLate = students.filter(
+      (s) => (s.todayEffectiveStatus || s.todayStatus) === "PENDING_LATE",
+    ).length;
+    return {
+      total,
+      present,
+      late,
+      absent,
+      excused,
+      pending: pendingEarly + pendingLate,
+      pendingEarly,
+      pendingLate,
+    };
   }, [responseData, students, total]);
 
   const isSingleDay = responseData?.isSingleDay ?? true;
@@ -189,17 +237,49 @@ const Students: React.FC = () => {
     }
   };
 
+  const handleDownloadTemplate = async () => {
+    if (!schoolId) return;
+    try {
+      const blob = await studentsService.downloadTemplate(schoolId);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "students-template.xlsx");
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      message.error("Shablonni yuklab bo'lmadi");
+    }
+  };
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !schoolId) return;
 
     const hide = message.loading("Yuklanmoqda...", 0);
     try {
-      const result = await studentsService.importExcel(schoolId, file);
-      message.success(`${result.imported} ta o'quvchi yuklandi`);
+      const result = await studentsService.importExcel(schoolId, file, {
+        createMissingClass: allowCreateMissingClass,
+      });
+      const skipped = result.skipped || 0;
+      const errors = result.errors || [];
+      if (errors.length > 0) {
+        message.warning(
+          `${result.imported} ta yuklandi, ${skipped} ta o'tkazib yuborildi`,
+        );
+        console.warn("Import errors:", errors);
+        setImportErrors(errors);
+        setImportErrorOpen(true);
+      } else {
+        message.success(`${result.imported} ta o'quvchi yuklandi`);
+      }
       fetchStudents();
-    } catch (err) {
-      message.error("Yuklashda xatolik. Fayl formatini tekshiring.");
+    } catch (err: any) {
+      const apiError = err?.response?.data?.error;
+      message.error(
+        apiError || "Yuklashda xatolik. Fayl formatini tekshiring.",
+      );
     } finally {
       hide();
       e.target.value = ""; // Reset input
@@ -265,16 +345,25 @@ const Students: React.FC = () => {
                 },
                 LATE: {
                   color: "orange",
-                  text: "Kech",
+                  text: "Kech qoldi",
                   icon: <ClockCircleOutlined />,
                 },
                 ABSENT: {
                   color: "red",
-                  text: "Kelmagan",
+                  text: "Kelmadi",
                   icon: <CloseCircleOutlined />,
                 },
                 EXCUSED: { color: "gray", text: "Sababli", icon: null },
-                PENDING: { color: "default", text: "Kutilmoqda", icon: null },
+                PENDING_EARLY: {
+                  color: "default",
+                  text: "Hali kelmagan",
+                  icon: null,
+                },
+                PENDING_LATE: {
+                  color: "gold",
+                  text: "Kechikmoqda",
+                  icon: null,
+                },
               };
               const config = statusConfig[effectiveStatus] || {
                 color: "default",
@@ -341,15 +430,15 @@ const Students: React.FC = () => {
           },
           {
             title: (
-              <span style={{ color: "#faad14" }}>
-                <ClockCircleOutlined /> Kech
+              <span style={{ color: "#fa8c16" }}>
+                <ClockCircleOutlined /> Kech qoldi
               </span>
             ),
             key: "late",
             width: 80,
             align: "center" as const,
             render: (_: any, record: any) => (
-              <Text style={{ color: "#faad14" }}>
+              <Text style={{ color: "#fa8c16" }}>
                 {record.periodStats?.lateCount || 0}
               </Text>
             ),
@@ -423,6 +512,7 @@ const Students: React.FC = () => {
               size="small"
               danger
               icon={<DeleteOutlined />}
+              aria-label="O'quvchini o'chirish"
               onClick={(e) => e.stopPropagation()}
             />
           </Popconfirm>
@@ -493,29 +583,51 @@ const Students: React.FC = () => {
         <StatItem
           icon={<ClockCircleOutlined />}
           value={stats.late}
-          label={isSingleDay ? "kech" : "kech (jami)"}
-          color="#faad14"
+          label={isSingleDay ? "kech qoldi" : "kech (jami)"}
+          color="#fa8c16"
           tooltip={
             isSingleDay
-              ? "Kech qolganlar"
+              ? "Kech qolganlar (scan bilan)"
               : "Vaqt oralig'ida kech qolgan kunlar soni"
           }
         />
         <StatItem
           icon={<CloseCircleOutlined />}
           value={stats.absent}
-          label={isSingleDay ? "yo'q" : "yo'q (jami)"}
+          label={isSingleDay ? "kelmadi" : "yo'q (jami)"}
           color="#ff4d4f"
           tooltip={
-            isSingleDay ? "Kelmaganlar" : "Vaqt oralig'ida kelmagan kunlar soni"
+            isSingleDay ? "Kelmadi (cutoff o'tgan)" : "Vaqt oralig'ida kelmagan kunlar soni"
           }
         />
+        {isSingleDay && (stats.pendingLate || 0) > 0 && (
+          <StatItem
+            icon={<ClockCircleOutlined />}
+            value={stats.pendingLate || 0}
+            label="kechikmoqda"
+            color="#fadb14"
+            tooltip="Dars boshlangan, cutoff o'tmagan"
+          />
+        )}
+        {isSingleDay && (stats.pendingEarly || 0) > 0 && (
+          <StatItem
+            icon={<CloseCircleOutlined />}
+            value={stats.pendingEarly || 0}
+            label="hali kelmagan"
+            color="#bfbfbf"
+            tooltip="Dars hali boshlanmagan"
+          />
+        )}
         <Divider />
         <Input
           placeholder="Qidirish..."
           prefix={<SearchOutlined />}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={searchInput}
+          onChange={(e) => {
+            const value = e.target.value;
+            setSearchInput(value);
+            debouncedSetSearch(value);
+          }}
           style={{ width: 160 }}
           allowClear
           size="small"
@@ -553,10 +665,23 @@ const Students: React.FC = () => {
             Yuklash
           </Button>
         </div>
-        <Button icon={<DownloadOutlined />} size="small" onClick={handleExport}>
-          Eksport
-        </Button>
-      </PageHeader>
+        <Space size={4}>
+          <Switch
+            size="small"
+            checked={allowCreateMissingClass}
+            onChange={setAllowCreateMissingClass}
+          />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Sinf yo'q bo'lsa yaratish
+          </Text>
+        </Space>
+      <Button size="small" onClick={handleDownloadTemplate}>
+        Shablon
+      </Button>
+      <Button icon={<DownloadOutlined />} size="small" onClick={handleExport}>
+        Eksport
+      </Button>
+    </PageHeader>
 
       <Table
         dataSource={students}
@@ -574,6 +699,14 @@ const Students: React.FC = () => {
         }}
         onRow={(record) => ({
           onClick: () => navigate(`/students/${record.id}`),
+          onKeyDown: (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              navigate(`/students/${record.id}`);
+            }
+          },
+          role: "button",
+          tabIndex: 0,
           style: { cursor: "pointer" },
         })}
       />
@@ -614,6 +747,34 @@ const Students: React.FC = () => {
             <Input placeholder="+998 XX XXX XX XX" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Import xatolari"
+        open={importErrorOpen}
+        onCancel={() => setImportErrorOpen(false)}
+        onOk={() => setImportErrorOpen(false)}
+        okText="Yopish"
+        cancelButtonProps={{ style: { display: "none" } }}
+      >
+        <div style={{ maxHeight: 300, overflow: "auto" }}>
+          {importErrors.length === 0 ? (
+            <Text type="secondary">Xatoliklar yo'q</Text>
+          ) : (
+            importErrors.slice(0, 50).map((e, idx) => (
+              <div key={`${e.row}-${idx}`}>
+                <Text>
+                  {e.row}-qatorda: {e.message}
+                </Text>
+              </div>
+            ))
+          )}
+          {importErrors.length > 50 && (
+            <Text type="secondary">
+              Yana {importErrors.length - 50} ta xatolik bor
+            </Text>
+          )}
+        </div>
       </Modal>
     </div>
   );

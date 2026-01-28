@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import prisma from "../prisma";
 import ExcelJS from "exceljs";
 import {
+  addDaysUtc,
   getDateOnlyInZone,
   getDateRangeInZone,
   DateRangeType,
@@ -108,9 +109,12 @@ export default async function (fastify: FastifyInstance) {
         const studentIds = students.map((s) => s.id);
 
         // Vaqt oralig'iga qarab attendance olish
-        const dateFilter = isSingleDay
-          ? { date: dateRange.startDate }
-          : { date: { gte: dateRange.startDate, lte: dateRange.endDate } };
+        const dateFilter = {
+          date: {
+            gte: dateRange.startDate,
+            lt: addDaysUtc(dateRange.endDate, 1),
+          },
+        };
 
         const periodAttendance = await prisma.dailyAttendance.findMany({
           where: {
@@ -196,7 +200,7 @@ export default async function (fastify: FastifyInstance) {
                 (stats?.lastStatus as EffectiveStatus) ||
                 (dateRange.startDate.getTime() < today.getTime()
                   ? "ABSENT"
-                  : "PENDING");
+                  : "PENDING_EARLY");
             }
           }
           return {
@@ -258,7 +262,19 @@ export default async function (fastify: FastifyInstance) {
               ),
           pending: isSingleDay
             ? studentsWithStatus.filter(
-                (s) => s.todayEffectiveStatus === "PENDING",
+                (s) =>
+                  s.todayEffectiveStatus === "PENDING_EARLY" ||
+                  s.todayEffectiveStatus === "PENDING_LATE",
+              ).length
+            : 0,
+          pendingEarly: isSingleDay
+            ? studentsWithStatus.filter(
+                (s) => s.todayEffectiveStatus === "PENDING_EARLY",
+              ).length
+            : 0,
+          pendingLate: isSingleDay
+            ? studentsWithStatus.filter(
+                (s) => s.todayEffectiveStatus === "PENDING_LATE",
               ).length
             : 0,
         };
@@ -369,8 +385,8 @@ export default async function (fastify: FastifyInstance) {
     },
   );
 
-  fastify.post(
-    "/schools/:schoolId/students/import",
+  fastify.get(
+    "/schools/:schoolId/students/template",
     { preHandler: [(fastify as any).authenticate] } as any,
     async (request: any, reply) => {
       try {
@@ -380,79 +396,214 @@ export default async function (fastify: FastifyInstance) {
         requireRoles(user, ["SCHOOL_ADMIN"]);
         requireSchoolScope(user, schoolId);
 
-        const files = request.body.file;
-        if (!files || files.length === 0) {
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet("Students");
+        ws.columns = [
+          { header: "Name", key: "name", width: 30 },
+          { header: "Device ID", key: "deviceStudentId", width: 15 },
+          { header: "Class", key: "class", width: 15 },
+          { header: "Parent Name", key: "parentName", width: 25 },
+          { header: "Parent Phone", key: "parentPhone", width: 20 },
+        ];
+
+        reply.header(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        );
+        reply.header(
+          "Content-Disposition",
+          'attachment; filename="students-template.xlsx"',
+        );
+
+        const buffer = await wb.xlsx.writeBuffer();
+        return reply.send(buffer);
+      } catch (err) {
+        return sendHttpError(reply, err);
+      }
+    },
+  );
+
+  fastify.post(
+    "/schools/:schoolId/students/import",
+    { preHandler: [(fastify as any).authenticate] } as any,
+    async (request: any, reply) => {
+      try {
+        const { schoolId } = request.params;
+        const user = request.user;
+        const { createMissingClass } = request.query as any;
+        const allowCreateMissingClass = String(createMissingClass) === "true";
+
+        requireRoles(user, ["SCHOOL_ADMIN"]);
+        requireSchoolScope(user, schoolId);
+
+        const files = request.body?.file;
+        const file = Array.isArray(files) ? files[0] : files;
+        if (!file || !file.data) {
           return reply.status(400).send({ error: "No file uploaded" });
         }
 
-        const file = files[0];
+        const filename = String(file.filename || "");
+        const mimetype = String(file.mimetype || "").toLowerCase();
+        if (!filename.toLowerCase().endsWith(".xlsx")) {
+          return reply.status(400).send({ error: "Invalid file type" });
+        }
+        if (
+          mimetype &&
+          mimetype !==
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ) {
+          return reply.status(400).send({ error: "Invalid file type" });
+        }
+
         const buffer = file.data;
+        if (buffer.length > 5 * 1024 * 1024) {
+          return reply.status(400).send({ error: "File too large" });
+        }
 
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buffer);
         const ws = wb.getWorksheet(1);
         if (!ws) return reply.status(400).send({ error: "Invalid sheet" });
 
-        let importedCount = 0;
-        for (let i = 2; i <= ws.rowCount; i++) {
-          const row = ws.getRow(i);
-          const name = row.getCell(1).text;
-          const deviceStudentId = row.getCell(2).text;
-          const className = row.getCell(3).text;
-          const parentName = row.getCell(4).text;
-          const parentPhone = row.getCell(5).text;
-
-          if (!name || !deviceStudentId) continue;
-
-          let classId = null;
-          if (className) {
-            let cls = await prisma.class.findFirst({
-              where: { name: className, schoolId },
-            });
-            if (!cls) {
-              cls = await prisma.class.create({
-                data: {
-                  name: className,
-                  schoolId,
-                  gradeLevel: 1,
-                  startTime: "08:00",
-                },
-              });
-            }
-            classId = cls.id;
-          }
-
-          const existingStudent = await prisma.student.findFirst({
-            where: { schoolId, deviceStudentId },
+        const expectedHeaders = [
+          "name",
+          "device id",
+          "class",
+          "parent name",
+          "parent phone",
+        ];
+        const headerValues = expectedHeaders.map((_, idx) =>
+          String(ws.getRow(1).getCell(idx + 1).text || "")
+            .trim()
+            .toLowerCase(),
+        );
+        const headerMismatch = expectedHeaders.some(
+          (h, i) => headerValues[i] !== h,
+        );
+        if (headerMismatch) {
+          return reply.status(400).send({
+            error: "Header mismatch. Please use the exported template.",
           });
-
-          if (existingStudent) {
-            await prisma.student.update({
-              where: { id: existingStudent.id },
-              data: {
-                name,
-                classId,
-                parentName,
-                parentPhone,
-                isActive: true,
-              },
-            });
-          } else {
-            await prisma.student.create({
-              data: {
-                name,
-                deviceStudentId,
-                classId,
-                parentName,
-                parentPhone,
-                schoolId,
-              },
-            });
-          }
-          importedCount++;
         }
 
-        return { imported: importedCount };
+        const classRows = await prisma.class.findMany({
+          where: { schoolId },
+          select: { id: true, name: true },
+        });
+        const classMap = new Map(
+          classRows.map((c) => [c.name.trim().toLowerCase(), c]),
+        );
+
+        const seenDeviceIds = new Set<string>();
+        let importedCount = 0;
+        let skippedCount = 0;
+        const errors: Array<{ row: number; message: string }> = [];
+
+        const lastRow = ws.actualRowCount || ws.rowCount;
+        const rows: Array<{
+          row: number;
+          name: string;
+          deviceStudentId: string;
+          className: string;
+          parentName: string;
+          parentPhone: string;
+        }> = [];
+        const missingClassNames = new Set<string>();
+
+        for (let i = 2; i <= lastRow; i++) {
+          const row = ws.getRow(i);
+          const name = row.getCell(1).text.trim();
+          const deviceStudentId = row.getCell(2).text.trim();
+          const className = row.getCell(3).text.trim();
+          const parentName = row.getCell(4).text.trim();
+          const parentPhone = row.getCell(5).text.trim();
+
+          if (!name || !deviceStudentId) {
+            skippedCount++;
+            errors.push({ row: i, message: "Name and Device ID are required" });
+            continue;
+          }
+          if (seenDeviceIds.has(deviceStudentId)) {
+            skippedCount++;
+            errors.push({ row: i, message: "Duplicate Device ID in file" });
+            continue;
+          }
+          seenDeviceIds.add(deviceStudentId);
+
+          if (className) {
+            const key = className.toLowerCase();
+            if (!classMap.has(key)) {
+              if (!allowCreateMissingClass) {
+                skippedCount++;
+                errors.push({
+                  row: i,
+                  message: "Class not found (enable createMissingClass)",
+                });
+                continue;
+              }
+              missingClassNames.add(className);
+            }
+          }
+
+          rows.push({
+            row: i,
+            name,
+            deviceStudentId,
+            className,
+            parentName,
+            parentPhone,
+          });
+        }
+
+        if (allowCreateMissingClass && missingClassNames.size > 0) {
+          const createOps = Array.from(missingClassNames).map((name) =>
+            prisma.class.create({
+              data: { name, schoolId, gradeLevel: 1, startTime: "08:00" },
+            }),
+          );
+          const created = await prisma.$transaction(createOps);
+          created.forEach((cls) => {
+            classMap.set(cls.name.trim().toLowerCase(), cls);
+          });
+        }
+
+        const ops = rows.map((r) => {
+          const classId = r.className
+            ? classMap.get(r.className.toLowerCase())?.id || null
+            : null;
+          return prisma.student.upsert({
+            where: {
+              schoolId_deviceStudentId: {
+                schoolId,
+                deviceStudentId: r.deviceStudentId,
+              },
+            },
+            update: {
+              name: r.name,
+              classId,
+              parentName: r.parentName || null,
+              parentPhone: r.parentPhone || null,
+              isActive: true,
+            },
+            create: {
+              name: r.name,
+              deviceStudentId: r.deviceStudentId,
+              classId,
+              parentName: r.parentName || null,
+              parentPhone: r.parentPhone || null,
+              schoolId,
+            },
+          });
+        });
+
+        const chunkSize = 200;
+        for (let i = 0; i < ops.length; i += chunkSize) {
+          const chunk = ops.slice(i, i + chunkSize);
+          await prisma.$transaction(chunk);
+          importedCount += chunk.length;
+        }
+
+        return { imported: importedCount, skipped: skippedCount, errors };
       } catch (err) {
         return sendHttpError(reply, err);
       }

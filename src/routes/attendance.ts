@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import prisma from "../prisma";
 import ExcelJS from "exceljs";
-import { getDateOnlyInZone } from "../utils/date";
+import { addDaysUtc, getDateOnlyInZone } from "../utils/date";
 import {
   requireRoles,
   requireSchoolScope,
@@ -30,6 +30,7 @@ export default async function (fastify: FastifyInstance) {
         const tz = school?.timezone || "Asia/Tashkent";
         const cutoff = school?.absenceCutoffMinutes ?? 180;
         const today = getDateOnlyInZone(new Date(), tz);
+        const tomorrow = addDaysUtc(today, 1);
         const nowMinutes = getNowMinutesInZone(new Date(), tz);
 
         requireRoles(user, ["SCHOOL_ADMIN", "TEACHER", "GUARD"]);
@@ -68,7 +69,7 @@ export default async function (fastify: FastifyInstance) {
         const records = await prisma.dailyAttendance.findMany({
           where: {
             schoolId,
-            date: today,
+            date: { gte: today, lt: tomorrow },
             studentId: { in: studentIds },
           },
         });

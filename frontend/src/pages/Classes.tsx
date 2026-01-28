@@ -126,12 +126,12 @@ const Classes: React.FC = () => {
                                 <Tag color="success" style={{ margin: 0 }}><CheckCircleOutlined /> {present}</Tag>
                             </Tooltip>
                             {late > 0 && (
-                                <Tooltip title="Kech">
+                                <Tooltip title="Kech qoldi">
                                     <Tag color="warning" style={{ margin: 0 }}><ClockCircleOutlined /> {late}</Tag>
                                 </Tooltip>
                             )}
                             {absent > 0 && (
-                                <Tooltip title="Kelmagan">
+                                <Tooltip title="Kelmadi">
                                     <Tag color="error" style={{ margin: 0 }}><CloseCircleOutlined /> {absent}</Tag>
                                 </Tooltip>
                             )}
@@ -171,16 +171,16 @@ const Classes: React.FC = () => {
                 <StatItem 
                     icon={<ClockCircleOutlined />} 
                     value={stats.todayLate} 
-                    label="kech" 
-                    color="#faad14"
-                    tooltip="Kech qolganlar"
+                    label="kech qoldi" 
+                    color="#fa8c16"
+                    tooltip="Kech qoldi (scan bilan)"
                 />
                 <StatItem 
                     icon={<CloseCircleOutlined />} 
                     value={stats.todayAbsent} 
-                    label="yo'q" 
+                    label="kelmadi" 
                     color="#ff4d4f"
-                    tooltip="Kelmaganlar"
+                    tooltip="Kelmadi (cutoff o'tgan)"
                 />
                 <Divider />
                 <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleAdd}>

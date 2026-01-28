@@ -4,6 +4,9 @@ import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcryptjs";
 import { requireRoles, requireSchoolScope } from "../utils/authz";
 import { sendHttpError } from "../utils/httpErrors";
+import { addDaysUtc, getDateOnlyInZone } from "../utils/date";
+import { getActiveClassIds, getNowMinutesInZone, getStartedClassIds, splitNoScanCountsByClass } from "../utils/attendanceStatus";
+import { Prisma } from "@prisma/client";
 
 export default async function (fastify: FastifyInstance) {
   fastify.get(
@@ -13,7 +16,162 @@ export default async function (fastify: FastifyInstance) {
       const user = request.user;
       if (user.role !== "SUPER_ADMIN")
         return reply.status(403).send({ error: "forbidden" });
-      return prisma.school.findMany();
+      const { scope } = request.query as { scope?: "started" | "active" };
+      const attendanceScope = scope === "active" ? "active" : "started";
+      const schools = await prisma.school.findMany({
+        include: {
+          _count: { select: { students: true, classes: true, devices: true } },
+        },
+      });
+
+      const now = new Date();
+      const schoolsWithStats = await Promise.all(
+        schools.map(async (school) => {
+          const tz = school.timezone || "Asia/Tashkent";
+          const today = getDateOnlyInZone(now, tz);
+          const tomorrow = addDaysUtc(today, 1);
+
+          const nowMinutes = getNowMinutesInZone(now, tz);
+
+          const classes = await prisma.class.findMany({
+            where: { schoolId: school.id },
+            select: { id: true, startTime: true, endTime: true },
+          });
+          const activeClassIds = getActiveClassIds({
+            classes,
+            nowMinutes,
+            absenceCutoffMinutes: school.absenceCutoffMinutes,
+          });
+          const startedClassIds = getStartedClassIds({
+            classes,
+            nowMinutes,
+          });
+          const effectiveClassIds =
+            attendanceScope === "active" ? activeClassIds : startedClassIds;
+
+          if (effectiveClassIds.length === 0) {
+            return {
+              ...school,
+              todayStats: {
+                present: 0,
+                late: 0,
+                absent: 0,
+                excused: 0,
+                pendingEarly: 0,
+                pendingLate: 0,
+                attendancePercent: 0,
+              },
+            };
+          }
+
+          const [attendanceStats, activeStudents, classStudentCounts, classAttendanceCounts] = await Promise.all([
+            prisma.dailyAttendance.groupBy({
+              by: ["status"],
+              where: {
+                schoolId: school.id,
+                date: { gte: today, lt: tomorrow },
+                student: { classId: { in: effectiveClassIds } },
+              },
+              _count: true,
+            }),
+            prisma.student.count({
+              where: { schoolId: school.id, isActive: true, classId: { in: effectiveClassIds } },
+            }),
+            prisma.student.groupBy({
+              by: ["classId"],
+              where: { schoolId: school.id, isActive: true, classId: { in: effectiveClassIds } },
+              _count: true,
+            }),
+            prisma.$queryRaw<
+              Array<{
+                classId: string | null;
+                count: bigint;
+              }>
+            >`
+              SELECT s."classId", COUNT(*)::bigint as count
+              FROM "DailyAttendance" da
+              JOIN "Student" s ON da."studentId" = s.id
+              WHERE da."schoolId" = ${school.id}
+                AND da."date" >= ${today}
+                AND da."date" < ${tomorrow}
+                AND s."isActive" = true
+                AND s."classId" IN (${Prisma.join(effectiveClassIds)})
+              GROUP BY s."classId"
+            `,
+          ]);
+
+          let present = 0;
+          let late = 0;
+          let absent = 0;
+          let excused = 0;
+          attendanceStats.forEach((stat) => {
+            if (stat.status === "PRESENT") present = stat._count;
+            else if (stat.status === "LATE") late = stat._count;
+            else if (stat.status === "ABSENT") absent = stat._count;
+            else if (stat.status === "EXCUSED") excused = stat._count;
+          });
+
+          const classStudentMap = new Map<string, number>();
+          let unassignedTotal = 0;
+          classStudentCounts.forEach((row) => {
+            if (row.classId) {
+              classStudentMap.set(row.classId, row._count);
+            } else {
+              unassignedTotal = row._count;
+            }
+          });
+
+          const classAttendanceMap = new Map<string, number>();
+          let unassignedAttended = 0;
+          classAttendanceCounts.forEach((row) => {
+            if (row.classId) {
+              classAttendanceMap.set(row.classId, Number(row.count));
+            } else {
+              unassignedAttended = Number(row.count);
+            }
+          });
+
+          const classesForSplit = classes.filter((cls) =>
+            effectiveClassIds.includes(cls.id),
+          );
+          if (unassignedTotal > 0 || unassignedAttended > 0) {
+            const unassignedKey = "__unassigned__";
+            classStudentMap.set(unassignedKey, unassignedTotal);
+            classAttendanceMap.set(unassignedKey, unassignedAttended);
+            classesForSplit.push({ id: unassignedKey, startTime: null });
+          }
+
+          const { pendingEarly, pendingLate, absent: absentNotArrivedCount } =
+            splitNoScanCountsByClass({
+              classes: classesForSplit,
+              classStudentCounts: classStudentMap,
+              classAttendanceCounts: classAttendanceMap,
+              absenceCutoffMinutes: school.absenceCutoffMinutes,
+              nowMinutes,
+            });
+
+          const totalPresent = present + late;
+          const attendancePercent =
+            activeStudents > 0
+              ? Math.round((totalPresent / activeStudents) * 100)
+              : 0;
+
+          return {
+            ...school,
+            todayStats: {
+              present,
+              late,
+              absent: absent + absentNotArrivedCount,
+              excused,
+              pendingEarly: pendingEarly,
+              pendingLate: pendingLate,
+              attendancePercent,
+            },
+          };
+        }),
+      );
+
+      return schoolsWithStats;
     },
   );
 

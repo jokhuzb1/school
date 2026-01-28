@@ -12,7 +12,6 @@ import {
   Tag,
   Spin,
   Empty,
-  Badge,
   Tooltip,
   Typography,
   List,
@@ -32,7 +31,6 @@ import {
   LoginOutlined,
   LogoutOutlined,
   CalendarOutlined,
-  SyncOutlined,
 } from "@ant-design/icons";
 import {
   PieChart,
@@ -50,10 +48,12 @@ import {
 import { useSchool } from "../hooks/useSchool";
 import { useAttendanceSSE } from "../hooks/useAttendanceSSE";
 import { dashboardService } from "../services/dashboard";
-import type { PeriodType } from "../types";
+import type { PeriodType, AttendanceScope } from "../types";
 import { schoolsService } from "../services/schools";
 import type { DashboardStats, AttendanceEvent, School, Class } from "../types";
 import { classesService } from "../services/classes";
+import { PageHeader } from "../components/PageHeader";
+import { StatItem, StatGroup } from "../components/StatItem";
 import dayjs from "dayjs";
 import debounce from "lodash/debounce";
 
@@ -71,11 +71,13 @@ const PERIOD_OPTIONS = [
 
 const PIE_COLORS: Record<string, string> = {
   Kelgan: "#52c41a",
-  Kech: "#faad14",
-  Kelmagan: "#ff4d4f",
+  "Kech qoldi": "#fa8c16",
+  Kechikmoqda: "#fadb14",
+  Kelmadi: "#ff4d4f",
   Sababli: "#8c8c8c",
   "Hali kelmagan": "#d9d9d9",
 };
+const AUTO_REFRESH_MS = 60000;
 
 const Dashboard: React.FC = () => {
   const { schoolId } = useSchool();
@@ -83,7 +85,6 @@ const Dashboard: React.FC = () => {
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
   const [school, setSchool] = useState<School | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState(dayjs());
   const [classes, setClasses] = useState<Class[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string | undefined>(
     undefined,
@@ -95,6 +96,9 @@ const Dashboard: React.FC = () => {
   const [customDateRange, setCustomDateRange] = useState<
     [dayjs.Dayjs, dayjs.Dayjs] | null
   >(null);
+  const [attendanceScope, setAttendanceScope] = useState<AttendanceScope>(
+    "started",
+  );
 
   // Ref to track pending events for batch processing
   const pendingEventsRef = useRef<{ inCount: number; outCount: number }>({
@@ -110,6 +114,7 @@ const Dashboard: React.FC = () => {
     try {
       const filters: any = { period: selectedPeriod };
       if (selectedClassId) filters.classId = selectedClassId;
+      if (selectedPeriod === "today") filters.scope = attendanceScope;
       if (selectedPeriod === "custom" && customDateRange) {
         filters.startDate = customDateRange[0].format("YYYY-MM-DD");
         filters.endDate = customDateRange[1].format("YYYY-MM-DD");
@@ -123,7 +128,7 @@ const Dashboard: React.FC = () => {
     } catch (err) {
       console.error("Failed to fetch stats:", err);
     }
-  }, [schoolId, selectedClassId, selectedPeriod, customDateRange]);
+  }, [schoolId, selectedClassId, selectedPeriod, customDateRange, attendanceScope]);
 
   // OPTIMIZATION: Debounced fetch - faqat 5 sekundda bir marta API chaqiriladi
   const debouncedFetchStats = useMemo(
@@ -137,14 +142,6 @@ const Dashboard: React.FC = () => {
       ),
     [fetchStats],
   );
-
-  // Update current time every minute
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(dayjs());
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
 
   // OPTIMIZED: SSE event handler with local state update (faqat bugun uchun)
   const handleSSEEvent = useCallback(
@@ -200,6 +197,7 @@ const Dashboard: React.FC = () => {
       try {
         const filters: any = { period: selectedPeriod };
         if (selectedClassId) filters.classId = selectedClassId;
+        if (selectedPeriod === "today") filters.scope = attendanceScope;
         if (selectedPeriod === "custom" && customDateRange) {
           filters.startDate = customDateRange[0].format("YYYY-MM-DD");
           filters.endDate = customDateRange[1].format("YYYY-MM-DD");
@@ -226,7 +224,15 @@ const Dashboard: React.FC = () => {
       }
     };
     fetchData();
-  }, [schoolId, selectedClassId, selectedPeriod, customDateRange, isToday]);
+  }, [schoolId, selectedClassId, selectedPeriod, customDateRange, isToday, attendanceScope]);
+
+  useEffect(() => {
+    if (!isToday) return;
+    const timer = setInterval(() => {
+      fetchStats();
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [isToday, fetchStats]);
 
   if (loading) {
     return (
@@ -240,193 +246,131 @@ const Dashboard: React.FC = () => {
     return <Empty description="Ma'lumot mavjud emas" />;
   }
 
+  const toNum = (value: any) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+  const totalStudents = toNum(stats.totalStudents);
+  const presentToday = toNum(stats.presentToday);
+  const lateToday = toNum(stats.lateToday);
+  const absentToday = toNum(stats.absentToday);
+  const excusedToday = toNum(stats.excusedToday);
+  const pendingEarlyCount =
+    stats.pendingEarlyCount !== undefined
+      ? toNum(stats.pendingEarlyCount)
+      : 0;
+  const latePendingCount =
+    stats.latePendingCount !== undefined ? toNum(stats.latePendingCount) : 0;
+  const notYetArrivedCount =
+    stats.notYetArrivedCount !== undefined
+      ? toNum(stats.notYetArrivedCount)
+      : pendingEarlyCount + latePendingCount ||
+        Math.max(0, totalStudents - (presentToday + absentToday + excusedToday));
+
   const pieData = [
-    { name: "Kelgan", value: stats.presentToday - stats.lateToday },
-    { name: "Kech", value: stats.lateToday },
-    { name: "Kelmagan", value: stats.absentToday },
-    { name: "Sababli", value: stats.excusedToday || 0 },
-    { name: "Hali kelmagan", value: stats.notYetArrivedCount || 0 },
-  ].filter((d) => d.value > 0);
+    { name: "Kelgan", value: presentToday },
+    { name: "Kech qoldi", value: lateToday },
+    { name: "Kechikmoqda", value: latePendingCount },
+    { name: "Kelmadi", value: absentToday },
+    { name: "Sababli", value: excusedToday },
+    { name: "Hali kelmagan", value: pendingEarlyCount },
+  ];
+  const pieHasData = pieData.some((d) => d.value > 0);
+
+  const weeklyData =
+    stats.weeklyStats && stats.weeklyStats.length > 0
+      ? stats.weeklyStats
+      : Array.from({ length: 7 }).map((_, idx) => {
+          const date = dayjs().subtract(6 - idx, "day");
+          return {
+            date: date.format("YYYY-MM-DD"),
+            dayName: date.format("dd"),
+            present: 0,
+            late: 0,
+            absent: 0,
+          };
+        });
 
   return (
     <div>
       {/* Kompakt Header: Vaqt + Statistikalar */}
-      <Card
-        size="small"
-        style={{
-          marginBottom: 12,
-          borderRadius: 8,
-          boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-        }}
+      <PageHeader 
+        showTime 
+        showLiveStatus={isToday} 
+        isConnected={isConnected}
+        extra={
+          lastUpdate && (
+            <Tooltip title="Oxirgi yangilanish">
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                ({dayjs(lastUpdate).format("HH:mm:ss")})
+              </Text>
+            </Tooltip>
+          )
+        }
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          {/* Vaqt va Live status */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <ClockCircleOutlined style={{ fontSize: 18, color: "#1890ff" }} />
-              <Text strong style={{ fontSize: 18 }}>
-                {currentTime.format("HH:mm")}
-              </Text>
-              <Text type="secondary" style={{ fontSize: 13, marginLeft: 4 }}>
-                <CalendarOutlined style={{ marginRight: 6 }} />
-                {currentTime.format("DD MMM, ddd")}
-              </Text>
-            </div>
-
-            <div
-              style={{
-                width: 1,
-                height: 24,
-                background: "#f0f0f0",
-                margin: "0 8px",
-              }}
+        <StatGroup>
+          <StatItem
+            icon={<TeamOutlined />}
+            label="jami"
+            value={stats.totalStudents}
+            color="#1890ff"
+            tooltip="Jami o'quvchilar"
+          />
+          <StatItem
+            icon={<CheckCircleOutlined />}
+            label="kelgan"
+            value={stats.presentToday}
+            color="#52c41a"
+            tooltip={`Kelganlar (kelgan+kech) ${stats.presentPercentage}%`}
+          />
+          <StatItem
+            icon={<ClockCircleOutlined />}
+            label="kech qoldi"
+            value={stats.lateToday}
+            color="#fa8c16"
+            tooltip="Kech qolganlar (scan bilan)"
+          />
+          <StatItem
+            icon={<CloseCircleOutlined />}
+            label="kelmadi"
+            value={stats.absentToday}
+            color="#ff4d4f"
+            tooltip="Kelmadi (cutoff o'tgan)"
+          />
+          {latePendingCount > 0 && (
+            <StatItem
+              icon={<ClockCircleOutlined />}
+              label="kechikmoqda"
+              value={latePendingCount}
+              color="#fadb14"
+              tooltip="Dars boshlangan, cutoff o'tmagan"
             />
-
-            {isToday && (
-              <Tooltip title={isConnected ? "Jonli ulangan" : "Oflayn"}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <Badge
-                    status={isConnected ? "success" : "error"}
-                  />
-                  {isConnected && (
-                    <SyncOutlined
-                      spin
-                      style={{ color: "#52c41a", fontSize: 12 }}
-                    />
-                  )}
-                </div>
-              </Tooltip>
-            )}
-
-            {lastUpdate && (
-              <Tooltip title="Oxirgi yangilanish">
-                <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
-                  ({dayjs(lastUpdate).format("HH:mm:ss")})
-                </Text>
-              </Tooltip>
-            )}
-          </div>
-
-          {/* Statistikalar */}
-          <div
-            style={{
-              display: "flex",
-              gap: 20,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <Tooltip title="Jami o'quvchilar">
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <TeamOutlined style={{ color: "#1890ff", fontSize: 16 }} />
-                <Text strong style={{ fontSize: 18, color: "#1890ff" }}>
-                  {stats.totalStudents}
-                </Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  jami
-                </Text>
-              </div>
-            </Tooltip>
-
-            <Tooltip title={`Kelganlar (${stats.presentPercentage}%)`}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <CheckCircleOutlined
-                  style={{ color: "#52c41a", fontSize: 16 }}
-                />
-                <Text strong style={{ fontSize: 18, color: "#52c41a" }}>
-                  {stats.presentToday}
-                </Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  kelgan
-                </Text>
-              </div>
-            </Tooltip>
-
-            <Tooltip title="Kech qolganlar">
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <ClockCircleOutlined
-                  style={{ color: "#faad14", fontSize: 16 }}
-                />
-                <Text strong style={{ fontSize: 18, color: "#faad14" }}>
-                  {stats.lateToday}
-                </Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  kech
-                </Text>
-              </div>
-            </Tooltip>
-
-            <Tooltip title="Kelmaganlar">
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <CloseCircleOutlined
-                  style={{ color: "#ff4d4f", fontSize: 16 }}
-                />
-                <Text strong style={{ fontSize: 18, color: "#ff4d4f" }}>
-                  {stats.absentToday}
-                </Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  yo'q
-                </Text>
-              </div>
-            </Tooltip>
-
-            {(stats.excusedToday || 0) > 0 && (
-              <Tooltip title="Sababli">
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <FileTextOutlined
-                    style={{ color: "#8c8c8c", fontSize: 16 }}
-                  />
-                  <Text strong style={{ fontSize: 18, color: "#8c8c8c" }}>
-                    {stats.excusedToday}
-                  </Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    sababli
-                  </Text>
-                </div>
-              </Tooltip>
-            )}
-
-            <div
-              style={{
-                width: 1,
-                height: 24,
-                background: "#f0f0f0",
-                margin: "0 4px",
-              }}
+          )}
+          {pendingEarlyCount > 0 && (
+            <StatItem
+              icon={<CloseCircleOutlined />}
+              label="hali kelmagan"
+              value={pendingEarlyCount}
+              color="#bfbfbf"
+              tooltip="Dars hali boshlanmagan"
             />
-
-            <Tooltip title="Hozir maktabda">
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  background: "#f6f0ff",
-                  padding: "6px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #efdbff",
-                }}
-              >
-                <LoginOutlined style={{ color: "#722ed1", fontSize: 16 }} />
-                <Text strong style={{ fontSize: 18, color: "#722ed1" }}>
-                  {stats.currentlyInSchool || 0}
-                </Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  maktabda
-                </Text>
-              </div>
-            </Tooltip>
-          </div>
-        </div>
-      </Card>
+          )}
+          {(stats.excusedToday || 0) > 0 && (
+            <StatItem
+              icon={<FileTextOutlined />}
+              label="sababli"
+              value={stats.excusedToday}
+              color="#8c8c8c"
+              tooltip="Sababli"
+            />
+          )}
+          <StatItem
+            icon={<LoginOutlined />}
+            label="maktabda"
+            value={stats.currentlyInSchool || 0}
+            color="#722ed1"
+            tooltip="Hozir maktabda"
+            highlight
+          />
+        </StatGroup>
+      </PageHeader>
 
       {/* Filterlar satri */}
       <div
@@ -462,6 +406,36 @@ const Dashboard: React.FC = () => {
             style={{ background: "transparent" }}
           />
         </div>
+
+        {isToday && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#fff",
+              padding: "4px 8px",
+              borderRadius: 8,
+              border: "1px solid #f0f0f0",
+            }}
+          >
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Ko'rinish:
+            </Text>
+            <Segmented
+              size="middle"
+              value={attendanceScope}
+              onChange={(value) =>
+                setAttendanceScope(value as AttendanceScope)
+              }
+              options={[
+                { label: "Boshlangan", value: "started" },
+                { label: "Faol", value: "active" },
+              ]}
+              style={{ background: "transparent" }}
+            />
+          </div>
+        )}
 
         {/* Custom date range picker */}
         {(selectedPeriod === "custom" || customDateRange) && (
@@ -538,43 +512,45 @@ const Dashboard: React.FC = () => {
             size="small"
             styles={{ body: { height: 240 } }}
           >
-            {pieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="45%"
-                    innerRadius={40}
-                    outerRadius={65}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={PIE_COLORS[entry.name] || "#d9d9d9"}
-                      />
-                    ))}
-                  </Pie>
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div
-                style={{
-                  height: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Empty
-                  description="Ma'lumot yo'q"
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                />
-              </div>
-            )}
+            <div style={{ height: 220 }}>
+              {pieHasData ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="45%"
+                      innerRadius={40}
+                      outerRadius={65}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={PIE_COLORS[entry.name] || "#d9d9d9"}
+                        />
+                      ))}
+                    </Pie>
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div
+                  style={{
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Empty
+                    description="Ma'lumot yo'q"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  />
+                </div>
+              )}
+            </div>
           </Card>
         </Col>
 
@@ -685,31 +661,97 @@ const Dashboard: React.FC = () => {
         </Col>
       </Row>
 
-      {/* Haftalik davomat dinamikasi va Kelmagan alert */}
+      {/* Haftalik davomat dinamikasi va Kelmadi alert */}
       <Row gutter={[12, 12]}>
-        <Col
-          xs={24}
-          lg={
-            stats.notYetArrivedCount && stats.notYetArrivedCount > 0 ? 16 : 24
-          }
-        >
+        <Col xs={24} lg={notYetArrivedCount > 0 ? 16 : 24}>
           <Card
             title="Haftalik davomat dinamikasi"
             size="small"
             styles={{ body: { height: 200 } }}
           >
-            {stats.weeklyStats && stats.weeklyStats.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.weeklyStats}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="dayName" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <RechartsTooltip />
-                  <Bar dataKey="present" fill="#52c41a" name="Kelgan" />
-                  <Bar dataKey="late" fill="#faad14" name="Kech" />
-                  <Bar dataKey="absent" fill="#ff4d4f" name="Kelmagan" />
-                </BarChart>
-              </ResponsiveContainer>
+            <div style={{ height: 180 }}>
+              {weeklyData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={weeklyData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="dayName" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <RechartsTooltip />
+                    <Bar dataKey="present" fill="#52c41a" name="Kelgan" />
+                  <Bar dataKey="late" fill="#fa8c16" name="Kech qoldi" />
+                  <Bar dataKey="absent" fill="#ff4d4f" name="Kelmadi" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div
+                  style={{
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Empty
+                    description="Ma'lumot yo'q"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  />
+                </div>
+              )}
+            </div>
+          </Card>
+        </Col>
+
+        {/* Kelmadi o'quvchilar */}
+        <Col xs={24} lg={8}>
+          <Card
+            title={
+              <span>
+                <WarningOutlined style={{ color: "#faad14" }} /> Kutilayotganlar (
+                {notYetArrivedCount}){" "}
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  Hali kelmagan: {pendingEarlyCount} · Kechikmoqda:{" "}
+                  {latePendingCount}
+                </Text>
+              </span>
+            }
+            size="small"
+            styles={{ body: { height: 200, overflowY: "auto" } }}
+          >
+            {notYetArrivedCount > 0 ? (
+              <>
+                <List
+                  size="small"
+                  dataSource={stats.notYetArrived?.slice(0, 8)}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: "4px 0", fontSize: 12 }}>
+                      <Text style={{ fontSize: 12 }}>{item.name}</Text>
+                      {item.pendingStatus === "PENDING_LATE" ? (
+                        <Tag
+                          color="gold"
+                          style={{ fontSize: 10, marginLeft: "auto" }}
+                        >
+                          Kechikmoqda
+                        </Tag>
+                      ) : (
+                        <Tag
+                          color="default"
+                          style={{ fontSize: 10, marginLeft: "auto" }}
+                        >
+                          Hali kelmagan
+                        </Tag>
+                      )}
+                      <Tag style={{ fontSize: 10, marginLeft: 6 }}>
+                        {item.className}
+                      </Tag>
+                    </List.Item>
+                  )}
+                />
+                {notYetArrivedCount > 8 && (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    ...va yana {notYetArrivedCount - 8} ta
+                  </Text>
+                )}
+              </>
             ) : (
               <div
                 style={{
@@ -720,47 +762,13 @@ const Dashboard: React.FC = () => {
                 }}
               >
                 <Empty
-                  description="Ma'lumot yo'q"
+                  description="Hozircha yo'q"
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                 />
               </div>
             )}
           </Card>
         </Col>
-
-        {/* Kelmagan o'quvchilar */}
-        {stats.notYetArrivedCount && stats.notYetArrivedCount > 0 && (
-          <Col xs={24} lg={8}>
-            <Card
-              title={
-                <span>
-                  <WarningOutlined style={{ color: "#faad14" }} /> Hali kelmagan
-                  ({stats.notYetArrivedCount})
-                </span>
-              }
-              size="small"
-              styles={{ body: { height: 200, overflowY: "auto" } }}
-            >
-              <List
-                size="small"
-                dataSource={stats.notYetArrived?.slice(0, 8)}
-                renderItem={(item) => (
-                  <List.Item style={{ padding: "4px 0", fontSize: 12 }}>
-                    <Text style={{ fontSize: 12 }}>{item.name}</Text>
-                    <Tag style={{ fontSize: 10, marginLeft: "auto" }}>
-                      {item.className}
-                    </Tag>
-                  </List.Item>
-                )}
-              />
-              {stats.notYetArrivedCount > 8 && (
-                <Text type="secondary" style={{ fontSize: 11 }}>
-                  ...va yana {stats.notYetArrivedCount - 8} ta
-                </Text>
-              )}
-            </Card>
-          </Col>
-        )}
       </Row>
 
       {/* Rules Footer */}
@@ -779,7 +787,7 @@ const Dashboard: React.FC = () => {
               {school.lateThresholdMinutes} daqiqa keyin
             </Text>
             <Text type="secondary">
-              <strong>Kelmagan:</strong> darsdan{" "}
+              <strong>Kelmadi:</strong> darsdan{" "}
               {school.absenceCutoffMinutes} daqiqa o'tgach avtomatik belgilanadi
               scan qilmasa
             </Text>

@@ -109,6 +109,7 @@ model Student {
   @@index([classId])
   @@index([deviceStudentId])  // Webhook lookup uchun KRITIK
   @@index([schoolId, classId, isActive])
+  @@unique([schoolId, deviceStudentId])
 }
 
 model Device {

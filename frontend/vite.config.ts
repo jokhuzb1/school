@@ -7,4 +7,16 @@ export default defineConfig({
   server: {
     host: true,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          antd: ["antd", "@ant-design/icons"],
+          charts: ["recharts"],
+          utils: ["axios", "dayjs", "lodash"],
+        },
+      },
+    },
+  },
 });

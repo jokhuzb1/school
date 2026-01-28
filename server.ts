@@ -34,7 +34,10 @@ server.register(require("@fastify/cors"), {
   credentials: true,
 });
 
-server.register(multipart, { addToBody: true });
+server.register(multipart, {
+  addToBody: true,
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 server.register(fastifyJwt, { secret: JWT_SECRET });
 
 server.register(fastifyStatic, {

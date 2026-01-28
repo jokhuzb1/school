@@ -74,6 +74,15 @@ const handleAttendanceEvent = async (
   const student = studentWithClass;
   const cls = studentWithClass?.class;
 
+  // Update device lastSeenAt so UI 'Holat' reflects recent activity
+  if (device?.id) {
+    await prisma.device.update({
+      where: { id: device.id },
+      data: { lastSeenAt: eventTime, isActive: true },
+    });
+  }
+  
+
   // ✅ OPTIMIZATION 2: AttendanceEvent yaratish va DailyAttendance ni parallel tekshirish
   const [event, existing] = await Promise.all([
     prisma.attendanceEvent.create({
@@ -458,3 +467,5 @@ export default async function (fastify: FastifyInstance) {
     return reply.send(result);
   });
 }
+
+

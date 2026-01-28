@@ -71,9 +71,13 @@ const Devices: React.FC = () => {
         return { total: devices.length, online, offline: devices.length - online, entrance, exit };
     }, [devices]);
 
-    const copyToClipboard = (text: string) => {
-        navigator.clipboard.writeText(text);
-        message.success('Nusxalandi!');
+    const copyToClipboard = async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            message.success('Nusxalandi!');
+        } catch (err) {
+            message.error('Nusxalashda xatolik');
+        }
     };
 
     const handleAdd = () => {
@@ -124,7 +128,7 @@ const Devices: React.FC = () => {
                     <Text strong>{name}</Text>
                     {record.location && (
                         <Tooltip title={record.location}>
-                            <EnvironmentOutlined style={{ color: '#8c8c8c' }} />
+                            <EnvironmentOutlined style={{ color: '#8c8c8c' }} aria-hidden="true" />
                         </Tooltip>
                     )}
                 </Space>
@@ -183,11 +187,22 @@ const Devices: React.FC = () => {
             render: (_: any, record: Device) => (
                 <Space size={4}>
                     <Tooltip title="Tahrirlash">
-                        <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEdit(record); }} />
+                        <Button
+                            size="small"
+                            icon={<EditOutlined />}
+                            aria-label="Qurilmani tahrirlash"
+                            onClick={(e) => { e.stopPropagation(); handleEdit(record); }}
+                        />
                     </Tooltip>
                     <Popconfirm title="Qurilmani o'chirish?" onConfirm={() => handleDelete(record.id)} okText="Ha" cancelText="Yo'q">
                         <Tooltip title="O'chirish">
-                            <Button size="small" icon={<DeleteOutlined />} danger onClick={(e) => e.stopPropagation()} />
+                            <Button
+                                size="small"
+                                icon={<DeleteOutlined />}
+                                aria-label="Qurilmani o'chirish"
+                                danger
+                                onClick={(e) => e.stopPropagation()}
+                            />
                         </Tooltip>
                     </Popconfirm>
                 </Space>
@@ -256,7 +271,12 @@ const Devices: React.FC = () => {
                                         <Input.Group compact>
                                             <Input value={webhookInfo.inUrl} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
                                             <Tooltip title="Nusxalash">
-                                                <Button icon={<CopyOutlined />} size="small" onClick={() => copyToClipboard(webhookInfo.inUrl)} />
+                                                <Button
+                                                    icon={<CopyOutlined />}
+                                                    size="small"
+                                                    aria-label="Kirish webhook manzilini nusxalash"
+                                                    onClick={() => copyToClipboard(webhookInfo.inUrl)}
+                                                />
                                             </Tooltip>
                                         </Input.Group>
                                     </div>
@@ -267,7 +287,12 @@ const Devices: React.FC = () => {
                                         <Input.Group compact>
                                             <Input value={webhookInfo.outUrl} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
                                             <Tooltip title="Nusxalash">
-                                                <Button icon={<CopyOutlined />} size="small" onClick={() => copyToClipboard(webhookInfo.outUrl)} />
+                                                <Button
+                                                    icon={<CopyOutlined />}
+                                                    size="small"
+                                                    aria-label="Chiqish webhook manzilini nusxalash"
+                                                    onClick={() => copyToClipboard(webhookInfo.outUrl)}
+                                                />
                                             </Tooltip>
                                         </Input.Group>
                                     </div>
@@ -299,7 +324,11 @@ const Devices: React.FC = () => {
                             rowKey="id" 
                             loading={loading}
                             size="small"
-                            pagination={false}
+                            pagination={{
+                                pageSize: 20,
+                                showSizeChanger: false,
+                                showTotal: (total) => `Jami: ${total}`,
+                            }}
                         />
                     </Card>
                 </Col>

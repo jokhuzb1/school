@@ -14,8 +14,8 @@ import dayjs from 'dayjs';
 // Status konfiguratsiyasi
 const STATUS_CONFIG: Record<AttendanceStatus, { color: string; text: string; icon: React.ReactNode }> = {
     PRESENT: { color: 'green', text: 'Kelgan', icon: <CheckCircleOutlined /> },
-    LATE: { color: 'orange', text: 'Kech', icon: <ClockCircleOutlined /> },
-    ABSENT: { color: 'red', text: 'Kelmagan', icon: <CloseCircleOutlined /> },
+    LATE: { color: 'orange', text: 'Kech qoldi', icon: <ClockCircleOutlined /> },
+    ABSENT: { color: 'red', text: 'Kelmadi', icon: <CloseCircleOutlined /> },
     EXCUSED: { color: 'gray', text: 'Sababli', icon: <ExclamationCircleOutlined /> },
 };
 
@@ -84,7 +84,7 @@ const EventTag: React.FC<EventTagProps> = ({
 // Status colors export (boshqa joylarda ishlatish uchun)
 export const statusColors: Record<AttendanceStatus, string> = {
     PRESENT: '#52c41a',
-    LATE: '#faad14',
+    LATE: '#fa8c16',
     ABSENT: '#ff4d4f',
     EXCUSED: '#8c8c8c',
 };

@@ -3,6 +3,10 @@ export type Role = 'SUPER_ADMIN' | 'SCHOOL_ADMIN' | 'TEACHER' | 'GUARD';
 
 // Attendance status
 export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED';
+export type EffectiveAttendanceStatus =
+  | AttendanceStatus
+  | 'PENDING_EARLY'
+  | 'PENDING_LATE';
 
 // Device type
 export type DeviceType = 'ENTRANCE' | 'EXIT';
@@ -34,6 +38,9 @@ export interface School {
         present: number;
         late: number;
         absent: number;
+        pendingEarly?: number;
+        pendingLate?: number;
+        excused?: number;
         attendancePercent: number;
     };
 }
@@ -84,7 +91,7 @@ export interface Student {
     updatedAt: string;
     // Today's attendance (populated by list endpoint)
     todayStatus?: AttendanceStatus | null;
-    todayEffectiveStatus?: AttendanceStatus | 'PENDING' | null;
+    todayEffectiveStatus?: EffectiveAttendanceStatus | null;
     todayFirstScan?: string | null;
     // Expanded attendance (populated when fetching with attendance)
     attendance?: DailyAttendance[];
@@ -125,7 +132,7 @@ export interface DailyAttendance {
     student?: Student;
     schoolId: string;
     date: string;
-    status: AttendanceStatus;
+    status: EffectiveAttendanceStatus;
     firstScanTime?: string;
     lastScanTime?: string;
     lateMinutes?: number;
@@ -151,6 +158,7 @@ export interface Holiday {
 
 // Vaqt filterlari turlari
 export type PeriodType = 'today' | 'yesterday' | 'week' | 'month' | 'year' | 'custom';
+export type AttendanceScope = 'started' | 'active';
 
 // Students response with period stats
 export interface StudentsResponse extends PaginatedResponse<Student> {
@@ -166,6 +174,8 @@ export interface StudentsResponse extends PaginatedResponse<Student> {
     absent: number;
     excused: number;
     pending?: number;
+    pendingEarly?: number;
+    pendingLate?: number;
   };
 }
 
@@ -215,8 +225,11 @@ export interface DashboardStats {
         id: string;
         name: string;
         className: string;
+        pendingStatus?: 'PENDING_EARLY' | 'PENDING_LATE';
     }>;
     notYetArrivedCount?: number;
+    pendingEarlyCount?: number;
+    latePendingCount?: number;
 }
 
 // API Response types

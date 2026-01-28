@@ -97,8 +97,8 @@ const Settings: React.FC = () => {
                     
                     <Form.Item 
                         name="absenceCutoffMinutes" 
-                        label="Kelmagan deb belgilash muddati"
-                        tooltip="Dars boshlanishidan necha daqiqa keyin kelmagan o'quvchi avtomatik 'Kelmagan' deb belgilanadi"
+                        label="Kelmadi deb belgilash muddati"
+                        tooltip="Dars boshlanishidan necha daqiqa keyin kelmagan o'quvchi avtomatik 'Kelmadi' deb belgilanadi"
                     >
                         <InputNumber 
                             min={0} 

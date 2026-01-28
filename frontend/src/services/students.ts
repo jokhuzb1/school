@@ -13,6 +13,12 @@ export interface StudentsFilters {
   endDate?: string;
 }
 
+export interface ImportStudentsResult {
+  imported: number;
+  skipped?: number;
+  errors?: Array<{ row: number; message: string }>;
+}
+
 export const studentsService = {
   async getAll(
     schoolId: string,
@@ -72,13 +78,17 @@ export const studentsService = {
   async importExcel(
     schoolId: string,
     file: File,
-  ): Promise<{ imported: number }> {
+    options?: { createMissingClass?: boolean },
+  ): Promise<ImportStudentsResult> {
     const formData = new FormData();
     formData.append("file", file);
     const response = await api.post(
       `/schools/${schoolId}/students/import`,
       formData,
       {
+        params: options?.createMissingClass
+          ? { createMissingClass: "true" }
+          : undefined,
         headers: { "Content-Type": "multipart/form-data" },
       },
     );
@@ -87,6 +97,13 @@ export const studentsService = {
 
   async exportExcel(schoolId: string): Promise<Blob> {
     const response = await api.get(`/schools/${schoolId}/students/export`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
+  async downloadTemplate(schoolId: string): Promise<Blob> {
+    const response = await api.get(`/schools/${schoolId}/students/template`, {
       responseType: "blob",
     });
     return response.data;

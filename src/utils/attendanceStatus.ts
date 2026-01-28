@@ -10,7 +10,8 @@ export type EffectiveStatus =
   | "LATE"
   | "ABSENT"
   | "EXCUSED"
-  | "PENDING";
+  | "PENDING_EARLY"
+  | "PENDING_LATE";
 
 export interface StatusInput {
   /** DailyAttendance.status from database (null if no record) */
@@ -28,9 +29,9 @@ export interface StatusInput {
  *
  * Logic:
  * 1. If dbStatus exists -> return it as-is
- * 2. If classStartTime is null -> return 'PENDING'
- * 3. If now < classStart -> return 'PENDING' (dars hali boshlanmagan)
- * 4. If now < classStart + cutoff -> return 'PENDING' (cutoff muddati o'tmagan)
+ * 2. If classStartTime is null -> return 'PENDING_EARLY'
+ * 3. If now < classStart -> return 'PENDING_EARLY' (dars hali boshlanmagan)
+ * 4. If now < classStart + cutoff -> return 'PENDING_LATE' (dars boshlangan, cutoff muddati o'tmagan)
  * 5. Otherwise -> return 'ABSENT' (cutoff o'tgan, kelmagan)
  */
 export function computeAttendanceStatus(input: StatusInput): EffectiveStatus {
@@ -43,7 +44,7 @@ export function computeAttendanceStatus(input: StatusInput): EffectiveStatus {
 
   // 2. No class start time -> can't calculate, assume pending
   if (!classStartTime) {
-    return "PENDING";
+    return "PENDING_EARLY";
   }
 
   // 3. Parse class start time
@@ -52,13 +53,13 @@ export function computeAttendanceStatus(input: StatusInput): EffectiveStatus {
 
   // 4. If current time is before class start, still pending
   if (nowMinutes < classStartMinutes) {
-    return "PENDING";
+    return "PENDING_EARLY";
   }
 
   // 5. If current time is within cutoff window, still pending
   const cutoffMinutes = classStartMinutes + absenceCutoffMinutes;
   if (nowMinutes < cutoffMinutes) {
-    return "PENDING";
+    return "PENDING_LATE";
   }
 
   // 6. Cutoff passed, no scan -> ABSENT
@@ -100,4 +101,103 @@ export function computeStudentStatuses(
   }
 
   return result;
+}
+
+export function splitNoScanCountsByClass(params: {
+  classes: Array<{ id: string; startTime: string | null }>;
+  classStudentCounts: Map<string, number>;
+  classAttendanceCounts: Map<string, number>;
+  absenceCutoffMinutes: number;
+  nowMinutes: number;
+}): { pendingEarly: number; pendingLate: number; absent: number } {
+  const {
+    classes,
+    classStudentCounts,
+    classAttendanceCounts,
+    absenceCutoffMinutes,
+    nowMinutes,
+  } = params;
+
+  let pendingEarly = 0;
+  let pendingLate = 0;
+  let absent = 0;
+
+  classes.forEach((cls) => {
+    const totalInClass = classStudentCounts.get(cls.id) || 0;
+    const attendedInClass = classAttendanceCounts.get(cls.id) || 0;
+    const notArrived = Math.max(0, totalInClass - attendedInClass);
+    if (notArrived === 0) return;
+
+    if (!cls.startTime) {
+      pendingEarly += notArrived;
+      return;
+    }
+
+    const [h, m] = cls.startTime.split(":").map(Number);
+    const classStartMinutes = h * 60 + m;
+    const cutoffMinutes = classStartMinutes + absenceCutoffMinutes;
+
+    if (nowMinutes < classStartMinutes) {
+      pendingEarly += notArrived;
+    } else if (nowMinutes < cutoffMinutes) {
+      pendingLate += notArrived;
+    } else {
+      absent += notArrived;
+    }
+  });
+
+  return { pendingEarly, pendingLate, absent };
+}
+
+export function getActiveClassIds(params: {
+  classes: Array<{ id: string; startTime: string | null; endTime?: string | null }>;
+  nowMinutes: number;
+  absenceCutoffMinutes: number;
+}): string[] {
+  const { classes, nowMinutes, absenceCutoffMinutes } = params;
+  const active: string[] = [];
+
+  const toMinutes = (time: string): number => {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  };
+
+  classes.forEach((cls) => {
+    if (!cls.startTime) return;
+    const start = toMinutes(cls.startTime);
+    const endFromSchedule = cls.endTime ? toMinutes(cls.endTime) : start;
+    const cutoffEnd = start + absenceCutoffMinutes;
+    const end = Math.max(endFromSchedule, cutoffEnd);
+    if (nowMinutes >= start && nowMinutes < end) {
+      active.push(cls.id);
+    }
+  });
+
+  return active;
+}
+
+export function getStartedClassIds(params: {
+  classes: Array<{ id: string; startTime: string | null }>;
+  nowMinutes: number;
+}): string[] {
+  const { classes, nowMinutes } = params;
+  const started: string[] = [];
+
+  const toMinutes = (time: string): number => {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  };
+
+  classes.forEach((cls) => {
+    if (!cls.startTime) {
+      started.push(cls.id);
+      return;
+    }
+    const start = toMinutes(cls.startTime);
+    if (nowMinutes >= start) {
+      started.push(cls.id);
+    }
+  });
+
+  return started;
 }

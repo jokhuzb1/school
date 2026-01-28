@@ -1,5 +1,5 @@
 import api from './api';
-import type { DashboardStats, AttendanceEvent, PeriodType } from '../types';
+import type { DashboardStats, AttendanceEvent, PeriodType, AttendanceScope } from '../types';
 
 // Re-export PeriodType for convenience
 export type { PeriodType } from '../types';
@@ -9,6 +9,7 @@ export interface DashboardFilters {
     period?: PeriodType;
     startDate?: string;
     endDate?: string;
+    scope?: AttendanceScope;
 }
 
 export const dashboardService = {
@@ -19,6 +20,7 @@ export const dashboardService = {
         if (filters?.period) params.period = filters.period;
         if (filters?.startDate) params.startDate = filters.startDate;
         if (filters?.endDate) params.endDate = filters.endDate;
+        if (filters?.scope) params.scope = filters.scope;
         
         const response = await api.get<DashboardStats>(`/schools/${schoolId}/dashboard`, {
             params: Object.keys(params).length > 0 ? params : undefined
@@ -26,12 +28,13 @@ export const dashboardService = {
         return response.data;
     },
 
-    async getAdminStats(filters?: { period?: PeriodType; startDate?: string; endDate?: string }): Promise<any> {
+    async getAdminStats(filters?: { period?: PeriodType; startDate?: string; endDate?: string; scope?: AttendanceScope }): Promise<any> {
         const params: Record<string, string> = {};
         
         if (filters?.period) params.period = filters.period;
         if (filters?.startDate) params.startDate = filters.startDate;
         if (filters?.endDate) params.endDate = filters.endDate;
+        if (filters?.scope) params.scope = filters.scope;
         
         const response = await api.get('/admin/dashboard', {
             params: Object.keys(params).length > 0 ? params : undefined

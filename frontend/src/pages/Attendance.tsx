@@ -2,36 +2,52 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Table,
   Button,
-  Space,
   Tag,
   DatePicker,
   Select,
-  Card,
-  Row,
-  Col,
-  Statistic,
   App,
-  Badge,
-  Tooltip,
   Input,
   Modal,
   Form,
+  Segmented,
 } from "antd";
 import {
   DownloadOutlined,
-  WifiOutlined,
   SearchOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CloseCircleOutlined,
+  CalendarOutlined,
+  TeamOutlined,
 } from "@ant-design/icons";
 import { useSchool } from "../hooks/useSchool";
 import { useAttendanceSSE } from "../hooks/useAttendanceSSE";
 import { attendanceService } from "../services/attendance";
 import { classesService } from "../services/classes";
-import type { DailyAttendance, Class, AttendanceStatus } from "../types";
+import type {
+  DailyAttendance,
+  Class,
+  AttendanceStatus,
+  PeriodType,
+  EffectiveAttendanceStatus,
+} from "../types";
 import { getAssetUrl } from "../config";
 import { useAuth } from "../hooks/useAuth";
+import { PageHeader } from "../components/PageHeader";
+import { StatItem, StatGroup } from "../components/StatItem";
 import dayjs from "dayjs";
 
 const { RangePicker } = DatePicker;
+const AUTO_REFRESH_MS = 60000;
+
+const PERIOD_OPTIONS = [
+  { label: "Bugun", value: "today" },
+  { label: "Kecha", value: "yesterday" },
+  { label: "Hafta", value: "week" },
+  { label: "Oy", value: "month" },
+  { label: "Yil", value: "year" },
+  { label: "Tanlash", value: "custom" },
+];
 
 const Attendance: React.FC = () => {
   const { message } = App.useApp();
@@ -44,6 +60,7 @@ const Attendance: React.FC = () => {
     dayjs(),
     dayjs(),
   ]);
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>("today");
   const [classFilter, setClassFilter] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [searchText, setSearchText] = useState("");
@@ -61,16 +78,18 @@ const Attendance: React.FC = () => {
   const isTeacher = user?.role === "TEACHER";
   const canEdit = isSchoolAdmin || isTeacher;
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (silent = false) => {
     if (!schoolId) return;
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       let data: DailyAttendance[];
       const isToday =
         dateRange[0].isSame(dayjs(), "day") &&
         dateRange[1].isSame(dayjs(), "day");
 
-      if (isToday && !classFilter && !statusFilter) {
+      if (isToday) {
         data = await attendanceService.getToday(schoolId, {
           classId: classFilter,
           status: statusFilter,
@@ -90,18 +109,24 @@ const Attendance: React.FC = () => {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [schoolId, dateRange, classFilter, statusFilter]);
+
+  const isTodayRange = useMemo(
+    () =>
+      dateRange[0].isSame(dayjs(), "day") &&
+      dateRange[1].isSame(dayjs(), "day"),
+    [dateRange],
+  );
 
   // SSE for real-time updates
   const { isConnected } = useAttendanceSSE(schoolId, {
     onEvent: () => {
       // Only auto-refresh if viewing today's data
-      const isToday =
-        dateRange[0].isSame(dayjs(), "day") &&
-        dateRange[1].isSame(dayjs(), "day");
-      if (isToday) {
+      if (isTodayRange) {
         fetchData();
       }
     },
@@ -122,6 +147,46 @@ const Attendance: React.FC = () => {
     fetchClasses();
   }, [schoolId, fetchData]);
 
+  useEffect(() => {
+    if (!isTodayRange) return;
+    const timer = setInterval(() => {
+      fetchData(true);
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [isTodayRange, fetchData]);
+
+  const handlePeriodChange = (value: PeriodType) => {
+    setSelectedPeriod(value);
+    let start = dayjs();
+    let end = dayjs();
+
+    switch (value) {
+      case "today":
+        start = dayjs();
+        end = dayjs();
+        break;
+      case "yesterday":
+        start = dayjs().subtract(1, "day");
+        end = dayjs().subtract(1, "day");
+        break;
+      case "week":
+        start = dayjs().startOf("week");
+        end = dayjs();
+        break;
+      case "month":
+        start = dayjs().startOf("month");
+        end = dayjs();
+        break;
+      case "year":
+        start = dayjs().startOf("year");
+        end = dayjs();
+        break;
+      case "custom":
+        return; // Don't change dateRange yet, wait for picker
+    }
+    setDateRange([start, end]);
+  };
+
   const handleStatusChange = async (
     record: DailyAttendance,
     status: AttendanceStatus,
@@ -136,7 +201,7 @@ const Attendance: React.FC = () => {
     }
 
     try {
-      if (isTeacher && status !== "EXCUSED") return;
+      if (isTeacher) return;
 
       if (record.id) {
         await attendanceService.update(record.id, { status });
@@ -208,11 +273,13 @@ const Attendance: React.FC = () => {
   }, [records, searchText]);
 
   const stats = {
+    total: filteredRecords.length,
     present: filteredRecords.filter(
       (r) => r.status === "PRESENT" || r.status === "LATE",
     ).length,
     late: filteredRecords.filter((r) => r.status === "LATE").length,
     absent: filteredRecords.filter((r) => r.status === "ABSENT").length,
+    excused: filteredRecords.filter((r) => r.status === "EXCUSED").length,
   };
 
   const columns = [
@@ -240,7 +307,7 @@ const Attendance: React.FC = () => {
       title: "Holat",
       dataIndex: "status",
       key: "status",
-      render: (status: AttendanceStatus, record: DailyAttendance) => {
+      render: (status: EffectiveAttendanceStatus, record: DailyAttendance) => {
         if (!canEdit) {
           return (
             <Tag
@@ -253,18 +320,22 @@ const Attendance: React.FC = () => {
                       ? "red"
                       : status === "EXCUSED"
                         ? "gray"
-                        : "default"
+                        : status === "PENDING_LATE"
+                          ? "gold"
+                          : "default"
               }
             >
               {status === "PRESENT"
                 ? "Kelgan"
                 : status === "LATE"
-                  ? "Kech"
+                  ? "Kech qoldi"
                   : status === "ABSENT"
-                    ? "Kelmagan"
+                    ? "Kelmadi"
                     : status === "EXCUSED"
                       ? "Sababli"
-                      : "Kutilmoqda"}
+                      : status === "PENDING_LATE"
+                        ? "Kechikmoqda"
+                        : "Hali kelmagan"}
             </Tag>
           );
         }
@@ -276,12 +347,12 @@ const Attendance: React.FC = () => {
           },
           {
             value: "LATE",
-            label: <Tag color="orange">Kech</Tag>,
+            label: <Tag color="orange">Kech qoldi</Tag>,
             disabled: isTeacher,
           },
           {
             value: "ABSENT",
-            label: <Tag color="red">Kelmagan</Tag>,
+            label: <Tag color="red">Kelmadi</Tag>,
             disabled: isTeacher,
           },
           {
@@ -292,11 +363,15 @@ const Attendance: React.FC = () => {
         ];
         return (
           <Select
-            value={status === "PENDING" ? undefined : status}
+            value={
+              status === "PENDING_EARLY" || status === "PENDING_LATE"
+                ? undefined
+                : status
+            }
             placeholder="Kutilmoqda"
             size="small"
             style={{ width: 100 }}
-            onChange={(val) => handleStatusChange(record, val)}
+            onChange={(val) => handleStatusChange(record, val as AttendanceStatus)}
             options={options}
             allowClear={false}
           />
@@ -336,125 +411,105 @@ const Attendance: React.FC = () => {
 
   return (
     <div>
-      {/* Connection Status Indicator */}
+      {/* Standart Header */}
+      <PageHeader showTime showLiveStatus isConnected={isConnected}>
+        <StatGroup>
+          <StatItem
+            icon={<TeamOutlined />}
+            label="Jami"
+            value={stats.total}
+            color="#1890ff"
+          />
+          <StatItem
+            icon={<CheckCircleOutlined />}
+            label="Kelgan"
+            value={stats.present}
+            color="#52c41a"
+          />
+          <StatItem
+            icon={<ClockCircleOutlined />}
+            label="Kech qoldi"
+            value={stats.late}
+            color="#fa8c16"
+          />
+          <StatItem
+            icon={<CloseCircleOutlined />}
+            label="Yo'q"
+            value={stats.absent}
+            color="#ff4d4f"
+          />
+          {stats.excused > 0 && (
+             <StatItem
+             icon={<CalendarOutlined />}
+             label="Sababli"
+             value={stats.excused}
+             color="#8c8c8c"
+           />
+          )}
+        </StatGroup>
+      </PageHeader>
+
+      {/* Filterlar satri */}
       <div
         style={{
-          marginBottom: 12,
           display: "flex",
           alignItems: "center",
-          gap: 8,
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: 16,
+          padding: "0 4px",
         }}
       >
-        <Tooltip title={isConnected ? "Jonli ulangan" : "Jonli ulanish yo'q"}>
-          <Badge
-            status={isConnected ? "success" : "error"}
-            text={
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  fontSize: 12,
-                }}
-              >
-                <WifiOutlined
-                  style={{ color: isConnected ? "#52c41a" : "#ff4d4f" }}
-                />
-              </span>
-            }
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: "#fff",
+            padding: "4px 8px",
+            borderRadius: 8,
+            border: "1px solid #f0f0f0",
+          }}
+        >
+          <CalendarOutlined style={{ color: "#8c8c8c" }} />
+          <Segmented
+            size="middle"
+            value={selectedPeriod}
+            onChange={(val) => handlePeriodChange(val as PeriodType)}
+            options={PERIOD_OPTIONS}
+            style={{ background: "transparent" }}
           />
-        </Tooltip>
-      </div>
+        </div>
 
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col xs={8}>
-          <Card>
-            <Statistic
-              title="Kelgan"
-              value={stats.present}
-              styles={{ content: { color: "#52c41a" } }}
-            />
-          </Card>
-        </Col>
-        <Col xs={8}>
-          <Card>
-            <Statistic
-              title="Kech"
-              value={stats.late}
-              styles={{ content: { color: "#faad14" } }}
-            />
-          </Card>
-        </Col>
-        <Col xs={8}>
-          <Card>
-            <Statistic
-              title="Kelmagan"
-              value={stats.absent}
-              styles={{ content: { color: "#ff4d4f" } }}
-            />
-          </Card>
-        </Col>
-      </Row>
+        {(selectedPeriod === "custom") && (
+          <RangePicker
+            value={dateRange}
+            onChange={(values) =>
+              values && setDateRange([values[0]!, values[1]!])
+            }
+            format="DD.MM.YYYY"
+            style={{ width: 240, borderRadius: 8 }}
+          />
+        )}
 
-      <Space style={{ marginBottom: 16, flexWrap: "wrap" }} size="middle">
-        {/* Qidiruv */}
+        <div
+          style={{
+            width: 1,
+            height: 20,
+            background: "#e8e8e8",
+            margin: "0 4px",
+          }}
+        />
+
         <Input
           placeholder="O'quvchi nomi..."
           prefix={<SearchOutlined />}
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
-          style={{ width: 180 }}
+          style={{ width: 180, borderRadius: 8 }}
           allowClear
         />
 
-        {/* Quick Date Buttons */}
-        <Button.Group>
-          <Button
-            type={
-              dateRange[0].isSame(dayjs(), "day") &&
-              dateRange[1].isSame(dayjs(), "day")
-                ? "primary"
-                : "default"
-            }
-            onClick={() => setDateRange([dayjs(), dayjs()])}
-          >
-            Bugun
-          </Button>
-          <Button
-            type={
-              dateRange[0].isSame(dayjs().subtract(1, "day"), "day") &&
-              dateRange[1].isSame(dayjs().subtract(1, "day"), "day")
-                ? "primary"
-                : "default"
-            }
-            onClick={() =>
-              setDateRange([
-                dayjs().subtract(1, "day"),
-                dayjs().subtract(1, "day"),
-              ])
-            }
-          >
-            Kecha
-          </Button>
-          <Button
-            type={
-              dateRange[0].isSame(dayjs().startOf("week"), "day") &&
-              dateRange[1].isSame(dayjs(), "day")
-                ? "primary"
-                : "default"
-            }
-            onClick={() => setDateRange([dayjs().startOf("week"), dayjs()])}
-          >
-            Bu hafta
-          </Button>
-        </Button.Group>
-
-        <RangePicker
-          value={dateRange}
-          onChange={(values) =>
-            values && setDateRange([values[0]!, values[1]!])
-          }
-        />
         <Select
           placeholder="Sinf"
           value={classFilter}
@@ -462,7 +517,9 @@ const Attendance: React.FC = () => {
           style={{ width: 120 }}
           allowClear
           options={classes.map((c) => ({ label: c.name, value: c.id }))}
+          suffixIcon={<TeamOutlined />}
         />
+        
         <Select
           placeholder="Holat"
           value={statusFilter}
@@ -471,18 +528,23 @@ const Attendance: React.FC = () => {
           allowClear
           options={[
             { value: "PRESENT", label: "Kelgan" },
-            { value: "LATE", label: "Kech" },
-            { value: "ABSENT", label: "Kelmagan" },
+            { value: "LATE", label: "Kech qoldi" },
+            { value: "ABSENT", label: "Kelmadi" },
+            { value: "PENDING_LATE", label: "Kechikmoqda" },
+            { value: "PENDING_EARLY", label: "Hali kelmagan" },
             { value: "EXCUSED", label: "Sababli" },
           ]}
         />
-        <Button icon={<DownloadOutlined />} onClick={handleExport}>
+        
+        <Button icon={<DownloadOutlined />} onClick={handleExport} style={{ borderRadius: 8 }}>
           Eksport
         </Button>
+
         {isSchoolAdmin && selectedRowKeys.length > 0 && (
           <Button
             type="primary"
             loading={bulkLoading}
+            style={{ borderRadius: 8 }}
             onClick={async () => {
               setBulkLoading(true);
               try {
@@ -503,7 +565,7 @@ const Attendance: React.FC = () => {
             {selectedRowKeys.length} tani Sababli qilish
           </Button>
         )}
-      </Space>
+      </div>
 
       <Table
         dataSource={filteredRecords}
@@ -512,6 +574,7 @@ const Attendance: React.FC = () => {
         loading={loading}
         size="middle"
         rowSelection={isSchoolAdmin ? rowSelection : undefined}
+        pagination={{ pageSize: 20 }}
       />
 
       <Modal

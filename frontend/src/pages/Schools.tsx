@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Table, Button, Modal, Form, Input, Popconfirm, Space, Tag, Tooltip, App, Typography, Progress, InputNumber, Divider as AntDivider } from 'antd';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { Table, Button, Modal, Form, Input, Popconfirm, Space, Tag, Tooltip, App, Typography, InputNumber, Divider as AntDivider, Segmented } from 'antd';
 import { 
     PlusOutlined, 
     DeleteOutlined, 
@@ -19,11 +19,12 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { schoolsService } from '../services/schools';
-import { PageHeader, Divider } from '../components';
-import { StatItem } from '../components/StatItem';
-import type { School } from '../types';
+import { PageHeader, Divider, StatusBar } from '../components';
+import { StatItem, StatGroup } from '../components/StatItem';
+import type { School, AttendanceScope } from '../types';
 
 const { Text } = Typography;
+const AUTO_REFRESH_MS = 60000;
 
 const Schools: React.FC = () => {
     const navigate = useNavigate();
@@ -33,23 +34,35 @@ const Schools: React.FC = () => {
     const [modalOpen, setModalOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [searchText, setSearchText] = useState('');
+    const [attendanceScope, setAttendanceScope] = useState<AttendanceScope>('started');
     const [form] = Form.useForm();
 
-    const fetchSchools = async () => {
-        setLoading(true);
+    const fetchSchools = useCallback(async (silent = false) => {
+        if (!silent) {
+            setLoading(true);
+        }
         try {
-            const data = await schoolsService.getAll();
+            const data = await schoolsService.getAll(attendanceScope);
             setSchools(data);
         } catch (err) {
             console.error(err);
         } finally {
-            setLoading(false);
+            if (!silent) {
+                setLoading(false);
+            }
         }
-    };
+    }, [attendanceScope]);
 
     useEffect(() => {
         fetchSchools();
-    }, []);
+    }, [fetchSchools]);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            fetchSchools(true);
+        }, AUTO_REFRESH_MS);
+        return () => clearInterval(timer);
+    }, [fetchSchools]);
 
     // Statistikalar
     const stats = useMemo(() => {
@@ -107,13 +120,6 @@ const Schools: React.FC = () => {
         }
     };
 
-    // Holat aniqlash
-    const getStatus = (percent: number) => {
-        if (percent >= 90) return { color: '#52c41a', text: 'Yaxshi' };
-        if (percent >= 75) return { color: '#faad14', text: 'Normal' };
-        return { color: '#ff4d4f', text: 'Past' };
-    };
-
     const columns = [
         { 
             title: 'Maktab', 
@@ -164,34 +170,44 @@ const Schools: React.FC = () => {
             key: 'attendance',
             width: 120,
             render: (_: any, record: School) => {
-                const percent = record.todayStats?.attendancePercent || 0;
-                const status = getStatus(percent);
+                const stats = record.todayStats;
+                const totalFromStats = stats
+                    ? (stats.present || 0) +
+                      (stats.late || 0) +
+                      (stats.absent || 0) +
+                      (stats.pendingEarly || 0) +
+                      (stats.pendingLate || 0) +
+                      (stats.excused || 0)
+                    : 0;
+                const total = stats ? totalFromStats : record._count?.students || 0;
                 return (
                     <div>
-                        <Progress 
-                            percent={percent} 
-                            size="small" 
-                            strokeColor={status.color}
-                            format={() => `${percent}%`}
+                        <StatusBar
+                            total={total}
+                            present={stats?.present || 0}
+                            late={stats?.late || 0}
+                            absent={stats?.absent || 0}
+                            pendingEarly={stats?.pendingEarly || 0}
+                            pendingLate={stats?.pendingLate || 0}
+                            excused={stats?.excused || 0}
+                            height={10}
                         />
-                        <Space size={4} style={{ marginTop: 2 }}>
-                            {record.todayStats && (
-                                <>
-                                    <Tag color="success" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
-                                        <CheckCircleOutlined /> {record.todayStats.present}
-                                    </Tag>
-                                    {record.todayStats.late > 0 && (
-                                        <Tag color="warning" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
-                                            <ClockCircleOutlined /> {record.todayStats.late}
-                                        </Tag>
-                                    )}
-                                    {record.todayStats.absent > 0 && (
-                                        <Tag color="error" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
-                                            <CloseCircleOutlined /> {record.todayStats.absent}
-                                        </Tag>
-                                    )}
-                                </>
-                            )}
+                        <Space size={4} style={{ marginTop: 6 }}>
+                            <Tag color="success" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
+                                <CheckCircleOutlined /> {stats?.present || 0}
+                            </Tag>
+                            <Tag color="warning" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
+                                <ClockCircleOutlined /> {stats?.late || 0}
+                            </Tag>
+                            <Tag color="gold" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
+                                <ClockCircleOutlined /> {stats?.pendingLate || 0}
+                            </Tag>
+                            <Tag color="default" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
+                                <CloseCircleOutlined /> {stats?.pendingEarly || 0}
+                            </Tag>
+                            <Tag color="error" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
+                                <CloseCircleOutlined /> {stats?.absent || 0}
+                            </Tag>
                         </Space>
                     </div>
                 );
@@ -216,7 +232,12 @@ const Schools: React.FC = () => {
             render: (_: any, record: School) => (
                 <Space size={4}>
                     <Tooltip title="Tahrirlash">
-                        <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEdit(record); }} />
+                        <Button
+                            size="small"
+                            icon={<EditOutlined />}
+                            aria-label="Maktabni tahrirlash"
+                            onClick={(e) => { e.stopPropagation(); handleEdit(record); }}
+                        />
                     </Tooltip>
                     <Popconfirm 
                         title="Maktabni o'chirish?" 
@@ -226,13 +247,20 @@ const Schools: React.FC = () => {
                         cancelText="Yo'q"
                     >
                         <Tooltip title="O'chirish">
-                            <Button size="small" icon={<DeleteOutlined />} danger onClick={(e) => e.stopPropagation()} />
+                            <Button
+                                size="small"
+                                icon={<DeleteOutlined />}
+                                aria-label="Maktabni o'chirish"
+                                danger
+                                onClick={(e) => e.stopPropagation()}
+                            />
                         </Tooltip>
                     </Popconfirm>
                     <Tooltip title="Boshqaruv">
                         <Button 
                             size="small" 
                             icon={<RightOutlined />} 
+                            aria-label="Maktab boshqaruv sahifasi"
                             onClick={(e) => { e.stopPropagation(); navigate(`/schools/${record.id}/dashboard`); }} 
                         />
                     </Tooltip>
@@ -245,40 +273,57 @@ const Schools: React.FC = () => {
         <div>
             {/* Kompakt Header - Dashboard uslubida */}
             <PageHeader>
-                <StatItem 
-                    icon={<BankOutlined />} 
-                    value={stats.total} 
-                    label="maktab" 
-                    color="#722ed1"
-                    tooltip="Jami maktablar"
-                />
+                <StatGroup>
+                    <StatItem 
+                        icon={<BankOutlined />} 
+                        value={stats.total} 
+                        label="maktab" 
+                        color="#722ed1"
+                        tooltip="Jami maktablar"
+                    />
+                    <StatItem 
+                        icon={<TeamOutlined />} 
+                        value={stats.totalStudents} 
+                        label="o'quvchi" 
+                        color="#1890ff"
+                        tooltip="Jami o'quvchilar"
+                    />
+                    <StatItem 
+                        icon={<BankOutlined />} 
+                        value={stats.totalClasses} 
+                        label="sinf" 
+                        color="#52c41a"
+                        tooltip="Jami sinflar"
+                    />
+                </StatGroup>
+                
                 <Divider />
-                <StatItem 
-                    icon={<TeamOutlined />} 
-                    value={stats.totalStudents} 
-                    label="o'quvchi" 
-                    color="#1890ff"
-                    tooltip="Jami o'quvchilar"
-                />
-                <StatItem 
-                    icon={<BankOutlined />} 
-                    value={stats.totalClasses} 
-                    label="sinf" 
-                    color="#52c41a"
-                    tooltip="Jami sinflar"
-                />
-                <Divider />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                        Ko'rinish:
+                    </Text>
+                    <Segmented
+                        size="middle"
+                        value={attendanceScope}
+                        onChange={(value) => setAttendanceScope(value as AttendanceScope)}
+                        options={[
+                            { label: "Boshlangan", value: "started" },
+                            { label: "Faol", value: "active" },
+                        ]}
+                    />
+                </div>
+                
                 {/* Search */}
                 <Input
                     placeholder="Qidirish..."
                     prefix={<SearchOutlined />}
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
-                    style={{ width: 200 }}
+                    style={{ width: 200, borderRadius: 8 }}
                     allowClear
-                    size="small"
+                    size="middle"
                 />
-                <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleAdd}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} style={{ borderRadius: 8 }}>
                     Maktab qo'shish
                 </Button>
             </PageHeader>
@@ -291,6 +336,14 @@ const Schools: React.FC = () => {
                 size="middle"
                 onRow={(record) => ({
                     onClick: () => navigate(`/schools/${record.id}/dashboard`),
+                    onKeyDown: (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            navigate(`/schools/${record.id}/dashboard`);
+                        }
+                    },
+                    role: "button",
+                    tabIndex: 0,
                     style: { cursor: 'pointer' },
                 })}
             />
@@ -347,10 +400,10 @@ const Schools: React.FC = () => {
                         
                         <Form.Item 
                             name="absenceCutoffMinutes" 
-                        label="Kelmagan deb belgilash (daqiqa)"
+                        label="Kelmadi deb belgilash (daqiqa)"
                             style={{ width: 220 }}
                             initialValue={180}
-                            tooltip="Dars boshlangandan keyin necha daqiqadan so'ng 'Kelmagan' deb belgilanadi"
+                            tooltip="Dars boshlangandan keyin necha daqiqadan so'ng 'Kelmadi' deb belgilanadi"
                         >
                             <InputNumber min={0} max={600} style={{ width: '100%' }} placeholder="180" addonAfter="daq" />
                         </Form.Item>

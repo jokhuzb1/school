@@ -49,27 +49,37 @@ import { useSchool } from "../hooks/useSchool";
 import { useAttendanceSSE } from "../hooks/useAttendanceSSE";
 import { classesService } from "../services/classes";
 import { studentsService } from "../services/students";
-import { schoolsService } from "../services/schools";
+import { attendanceService } from "../services/attendance";
 import { PageHeader, Divider } from "../components";
 import { StatItem } from "../components/StatItem";
 import { getAssetUrl } from "../config";
-import type { Class, Student, School, AttendanceStatus } from "../types";
+import type { Class, Student, AttendanceStatus } from "../types";
 import dayjs from "dayjs";
 
 const { Text, Title } = Typography;
+const AUTO_REFRESH_MS = 60000;
 
 // Status konfiguratsiyasi
-type EffectiveStatus = AttendanceStatus | "PENDING";
+type EffectiveStatus = AttendanceStatus | "PENDING_EARLY" | "PENDING_LATE";
 
 const STATUS_CONFIG: Record<
   EffectiveStatus,
   { color: string; bg: string; text: string }
 > = {
   PRESENT: { color: "#52c41a", bg: "#f6ffed", text: "Kelgan" },
-  LATE: { color: "#faad14", bg: "#fffbe6", text: "Kech" },
-  ABSENT: { color: "#ff4d4f", bg: "#fff2f0", text: "Kelmagan" },
+  LATE: { color: "#fa8c16", bg: "#fff7e6", text: "Kech qoldi" },
+  ABSENT: { color: "#ff4d4f", bg: "#fff2f0", text: "Kelmadi" },
   EXCUSED: { color: "#8c8c8c", bg: "#f5f5f5", text: "Sababli" },
-  PENDING: { color: "#bfbfbf", bg: "#fafafa", text: "Kutilmoqda" },
+  PENDING_EARLY: {
+    color: "#bfbfbf",
+    bg: "#fafafa",
+    text: "Hali kelmagan",
+  },
+  PENDING_LATE: {
+    color: "#fadb14",
+    bg: "#fffbe6",
+    text: "Kechikmoqda",
+  },
 };
 
 // NOTE: getEffectiveStatus removed - now using todayEffectiveStatus from backend API
@@ -79,7 +89,6 @@ const ClassDetail: React.FC = () => {
   const { schoolId } = useSchool();
   const { message } = App.useApp();
   const navigate = useNavigate();
-  const [school, setSchool] = useState<School | null>(null);
   const [classData, setClassData] = useState<Class | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<any[]>([]);
@@ -94,14 +103,12 @@ const ClassDetail: React.FC = () => {
     if (!classId || !schoolId) return;
     try {
       // Parallel so'rovlar
-      const [studentsData, classesData, schoolData] = await Promise.all([
+      const [studentsData, classesData] = await Promise.all([
         studentsService.getAll(schoolId, { classId }),
         classesService.getAll(schoolId),
-        schoolsService.getById(schoolId),
       ]);
 
       setStudents(studentsData.data || []);
-      setSchool(schoolData);
 
       // Class ma'lumotlarini topish
       const foundClass = classesData.find((c: Class) => c.id === classId);
@@ -109,20 +116,47 @@ const ClassDetail: React.FC = () => {
         setClassData(foundClass);
       }
 
-      // Haftalik statistika (placeholder - backend'dan olish kerak)
-      const weekStart = dayjs().startOf("week");
-      const weekData = [];
-      for (let i = 0; i < 7; i++) {
-        const date = weekStart.add(i, "day");
-        const dayName = date.format("ddd");
-        weekData.push({
-          date: date.format("YYYY-MM-DD"),
-          dayName,
-          present: Math.floor(Math.random() * 20) + 10,
-          late: Math.floor(Math.random() * 5),
-          absent: Math.floor(Math.random() * 5),
-        });
-      }
+      const weekStart = dayjs().subtract(6, "day").startOf("day");
+      const weekEnd = dayjs().endOf("day");
+
+      const attendanceData = await attendanceService.getReport(schoolId, {
+        startDate: weekStart.format("YYYY-MM-DD"),
+        endDate: weekEnd.format("YYYY-MM-DD"),
+        classId,
+      });
+
+      const byDate = new Map<
+        string,
+        { present: number; late: number; absent: number }
+      >();
+      attendanceData.forEach((record) => {
+        const dateKey = dayjs(record.date).format("YYYY-MM-DD");
+        if (!byDate.has(dateKey)) {
+          byDate.set(dateKey, { present: 0, late: 0, absent: 0 });
+        }
+        const entry = byDate.get(dateKey)!;
+        if (record.status === "PRESENT") entry.present += 1;
+        else if (record.status === "LATE") entry.late += 1;
+        else if (record.status === "ABSENT") entry.absent += 1;
+      });
+
+      const dayNames = ["Ya", "Du", "Se", "Ch", "Pa", "Ju", "Sh"];
+      const weekData = Array.from({ length: 7 }).map((_, idx) => {
+        const date = weekStart.add(idx, "day");
+        const dateKey = date.format("YYYY-MM-DD");
+        const stats = byDate.get(dateKey) || {
+          present: 0,
+          late: 0,
+          absent: 0,
+        };
+        return {
+          date: dateKey,
+          dayName: dayNames[date.day()],
+          present: stats.present + stats.late,
+          late: stats.late,
+          absent: stats.absent,
+        };
+      });
       setWeeklyStats(weekData);
 
       // Recent events - o'quvchilarning bugungi kirdi-chiqdi loglari
@@ -160,6 +194,14 @@ const ClassDetail: React.FC = () => {
     };
     loadInitial();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (dateFilter !== "today") return;
+    const timer = setInterval(() => {
+      fetchData();
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [dateFilter, fetchData]);
 
   // Edit sinf
   const handleEdit = () => {
@@ -203,16 +245,12 @@ const ClassDetail: React.FC = () => {
     }
   };
 
-  // Default cutoff minutes va class start time
-  const absenceCutoffMinutes = school?.absenceCutoffMinutes || 180;
-  const classStartTime = classData?.startTime;
-
   // O'quvchilarning effective statuslarini olish (backenddan keladi)
   const studentsWithEffectiveStatus = useMemo(() => {
     return students.map((student) => ({
       ...student,
       effectiveStatus:
-        (student.todayEffectiveStatus as EffectiveStatus) || "PENDING",
+        (student.todayEffectiveStatus as EffectiveStatus) || "PENDING_EARLY",
     }));
   }, [students]);
 
@@ -230,8 +268,11 @@ const ClassDetail: React.FC = () => {
     const excused = studentsWithEffectiveStatus.filter(
       (s) => s.effectiveStatus === "EXCUSED",
     ).length;
-    const pending = studentsWithEffectiveStatus.filter(
-      (s) => s.effectiveStatus === "PENDING",
+    const pendingEarly = studentsWithEffectiveStatus.filter(
+      (s) => s.effectiveStatus === "PENDING_EARLY",
+    ).length;
+    const pendingLate = studentsWithEffectiveStatus.filter(
+      (s) => s.effectiveStatus === "PENDING_LATE",
     ).length;
 
     const total = students.length;
@@ -244,7 +285,9 @@ const ClassDetail: React.FC = () => {
       late,
       absent,
       excused,
-      pending,
+      pending: pendingEarly + pendingLate,
+      pendingEarly,
+      pendingLate,
       attendancePercent,
     };
   }, [studentsWithEffectiveStatus, students.length]);
@@ -276,9 +319,14 @@ const ClassDetail: React.FC = () => {
         color: STATUS_CONFIG.ABSENT.color,
       },
       {
-        name: STATUS_CONFIG.PENDING.text,
-        value: stats.pending,
-        color: STATUS_CONFIG.PENDING.color,
+        name: "Kechikmoqda",
+        value: stats.pendingLate,
+        color: STATUS_CONFIG.PENDING_LATE.color,
+      },
+      {
+        name: "Hali kelmagan",
+        value: stats.pendingEarly,
+        color: STATUS_CONFIG.PENDING_EARLY.color,
       },
       {
         name: STATUS_CONFIG.EXCUSED.text,
@@ -343,15 +391,15 @@ const ClassDetail: React.FC = () => {
           icon={<ClockCircleOutlined />}
           value={stats.late}
           label="kech"
-          color="#faad14"
-          tooltip="Kech qolganlar"
+          color="#fa8c16"
+          tooltip="Kech qoldi (scan bilan)"
         />
         <StatItem
           icon={<CloseCircleOutlined />}
           value={stats.absent}
           label="yo'q"
           color="#ff4d4f"
-          tooltip="Kelmaganlar"
+          tooltip="Kelmadi (cutoff o'tgan)"
         />
         <Divider />
         <Select
@@ -532,12 +580,22 @@ const ClassDetail: React.FC = () => {
                   { value: "PRESENT", label: STATUS_CONFIG.PRESENT.text },
                   { value: "LATE", label: STATUS_CONFIG.LATE.text },
                   { value: "ABSENT", label: STATUS_CONFIG.ABSENT.text },
-                  { value: "PENDING", label: STATUS_CONFIG.PENDING.text },
+                  {
+                    value: "PENDING_LATE",
+                    label: STATUS_CONFIG.PENDING_LATE.text,
+                  },
+                  {
+                    value: "PENDING_EARLY",
+                    label: STATUS_CONFIG.PENDING_EARLY.text,
+                  },
                   { value: "EXCUSED", label: STATUS_CONFIG.EXCUSED.text },
                 ].filter((opt) => {
                   // Faqat mavjud statuslarni ko'rsatish
                   if (opt.value === "ABSENT") return stats.absent > 0;
-                  if (opt.value === "PENDING") return stats.pending > 0;
+                  if (opt.value === "PENDING_LATE")
+                    return stats.pendingLate > 0;
+                  if (opt.value === "PENDING_EARLY")
+                    return stats.pendingEarly > 0;
                   return true;
                 })}
               />
@@ -623,8 +681,8 @@ const ClassDetail: React.FC = () => {
                   <YAxis tick={{ fontSize: 11 }} />
                   <RechartsTooltip />
                   <Bar dataKey="present" fill="#52c41a" name="Kelgan" />
-                  <Bar dataKey="late" fill="#faad14" name="Kech" />
-                  <Bar dataKey="absent" fill="#ff4d4f" name="Kelmagan" />
+                  <Bar dataKey="late" fill="#fa8c16" name="Kech qoldi" />
+                  <Bar dataKey="absent" fill="#ff4d4f" name="Kelmadi" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (

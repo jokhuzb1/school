@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import prisma from '../prisma';
-import { getDateOnlyInZone } from '../utils/date';
+import { addDaysUtc, getDateOnlyInZone } from '../utils/date';
 import { requireRoles, requireSchoolScope, requireClassSchoolScope } from '../utils/authz';
 import { sendHttpError } from '../utils/httpErrors';
 
@@ -38,17 +38,18 @@ export default async function (fastify: FastifyInstance) {
 
         const tz = school?.timezone || 'Asia/Tashkent';
         const today = getDateOnlyInZone(new Date(), tz);
+        const tomorrow = addDaysUtc(today, 1);
         const classesWithAttendance = await Promise.all(
           classes.map(async (cls) => {
             const [presentCount, lateCount, absentCount] = await Promise.all([
               prisma.dailyAttendance.count({
-                where: { date: today, status: 'PRESENT', student: { classId: cls.id } },
+                where: { date: { gte: today, lt: tomorrow }, status: 'PRESENT', student: { classId: cls.id } },
               }),
               prisma.dailyAttendance.count({
-                where: { date: today, status: 'LATE', student: { classId: cls.id } },
+                where: { date: { gte: today, lt: tomorrow }, status: 'LATE', student: { classId: cls.id } },
               }),
               prisma.dailyAttendance.count({
-                where: { date: today, status: 'ABSENT', student: { classId: cls.id } },
+                where: { date: { gte: today, lt: tomorrow }, status: 'ABSENT', student: { classId: cls.id } },
               }),
             ]);
             return {

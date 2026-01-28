@@ -37,6 +37,7 @@ import type {
   AttendanceStatus,
   AttendanceEvent,
   PeriodType,
+  EffectiveAttendanceStatus,
 } from "../types";
 import dayjs, { Dayjs } from "dayjs";
 import { Segmented } from "antd";
@@ -52,17 +53,21 @@ const PERIOD_OPTIONS = [
   { label: "Yil", value: "year" },
 ];
 
-const statusColors: Record<AttendanceStatus, string> = {
+const statusColors: Record<EffectiveAttendanceStatus, string> = {
   PRESENT: "green",
   LATE: "orange",
   ABSENT: "red",
   EXCUSED: "gray",
+  PENDING_EARLY: "#bfbfbf",
+  PENDING_LATE: "#fadb14",
 };
-const statusLabels: Record<AttendanceStatus, string> = {
+const statusLabels: Record<EffectiveAttendanceStatus, string> = {
   PRESENT: "Kelgan",
-  LATE: "Kech",
-  ABSENT: "Kelmagan",
+  LATE: "Kech qoldi",
+  ABSENT: "Kelmadi",
   EXCUSED: "Sababli",
+  PENDING_EARLY: "Hali kelmagan",
+  PENDING_LATE: "Kechikmoqda",
 };
 
 const StudentDetail: React.FC = () => {
@@ -230,7 +235,7 @@ const StudentDetail: React.FC = () => {
       title: "Holat",
       dataIndex: "status",
       key: "status",
-      render: (s: AttendanceStatus, record: DailyAttendance) => (
+      render: (s: EffectiveAttendanceStatus, record: DailyAttendance) => (
         <Space>
           <Tag color={statusColors[s]}>{statusLabels[s]}</Tag>
           {record.currentlyInSchool && (
@@ -408,12 +413,12 @@ const StudentDetail: React.FC = () => {
 
               <div style={{ textAlign: "center" }}>
                 <div
-                  style={{ fontSize: 22, fontWeight: 700, color: "#faad14" }}
+                  style={{ fontSize: 22, fontWeight: 700, color: "#fa8c16" }}
                 >
                   {stats.late}
                 </div>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  Kechikkan
+                  Kech qoldi
                 </Text>
               </div>
 
@@ -424,7 +429,7 @@ const StudentDetail: React.FC = () => {
                   {stats.absent}
                 </div>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  Kelmagan
+                  Kelmadi
                 </Text>
               </div>
 
@@ -537,8 +542,8 @@ const StudentDetail: React.FC = () => {
             variant="borderless"
             options={[
               { value: "PRESENT", label: "Kelgan" },
-              { value: "LATE", label: "Kechikkan" },
-              { value: "ABSENT", label: "Kelmagan" },
+              { value: "LATE", label: "Kech qoldi" },
+              { value: "ABSENT", label: "Kelmadi" },
               { value: "EXCUSED", label: "Sababli" },
             ]}
           />
@@ -570,9 +575,13 @@ const StudentDetail: React.FC = () => {
                         value: stats.present,
                         color: "#52c41a",
                       },
-                      { name: "Kech", value: stats.late, color: "#faad14" },
                       {
-                        name: "Kelmagan",
+                        name: "Kech qoldi",
+                        value: stats.late,
+                        color: "#fa8c16",
+                      },
+                      {
+                        name: "Kelmadi",
                         value: stats.absent,
                         color: "#ff4d4f",
                       },
@@ -595,9 +604,13 @@ const StudentDetail: React.FC = () => {
                         value: stats.present,
                         color: "#52c41a",
                       },
-                      { name: "Kech", value: stats.late, color: "#faad14" },
                       {
-                        name: "Kelmagan",
+                        name: "Kech qoldi",
+                        value: stats.late,
+                        color: "#fa8c16",
+                      },
+                      {
+                        name: "Kelmadi",
                         value: stats.absent,
                         color: "#ff4d4f",
                       },
