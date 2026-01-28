@@ -24,6 +24,8 @@ Maqsad: kod bazani DRY/KISS/SOLID tamoyillariga moslashtirish, hisoblash/label/s
 - UI inline style'lar maksimal darajada `shared/ui/styles.ts` ga ko'chirildi.
 - StatusTag/StatusBar va Layout qolgan inline style'lari ham `shared/ui/styles.ts` helperlariga ko'chirildi.
 - DRY refaktor: period options va date filter helperlar `shared/constants/periodOptions.ts` va `shared/utils/dateFilters.ts` ga ko'chirildi; backend teacher class scope filtri helper bilan birlashtirildi.
+- Kamera monitoring (mock) uchun FSD-lite qatlamlar qo'shildi: `entities/camera/*`, `pages/Cameras.tsx`, `shared/ui/layoutMenu.tsx` da menu qo'shildi.
+- Kamera monitoring refinements: search/filter, lastSeen ko'rsatish, snapshot interval config (`CAMERA_SNAPSHOT_REFRESH_MS`), backend skeleton (`/camera-areas`, `/cameras`) qo'shildi.
 
 ## 1. Audit va xaritalash (1-2 kun)
 - Barcha status va statistika hisoblanadigan joylarni ro'yxatlash.

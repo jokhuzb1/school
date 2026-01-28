@@ -7,6 +7,7 @@ import {
   DashboardOutlined,
   SettingOutlined,
   TeamOutlined,
+  VideoCameraOutlined,
 } from "@ant-design/icons";
 
 export type UserRole = "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "GUARD";
@@ -49,6 +50,11 @@ export function buildMenuItems(params: {
       label: "Davomat",
     },
     { key: `${prefix}/classes`, icon: <BookOutlined />, label: "Sinflar" },
+    {
+      key: `${prefix}/cameras`,
+      icon: <VideoCameraOutlined />,
+      label: "Kameralar",
+    },
   ];
 
   // GUARD: read-only monitoring, no write/admin features

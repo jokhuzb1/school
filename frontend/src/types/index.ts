@@ -111,6 +111,32 @@ export interface Device {
     updatedAt: string;
 }
 
+// Camera area (room/zone)
+export interface CameraArea {
+    id: string;
+    name: string;
+    schoolId: string;
+    description?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+// Camera
+export type CameraStatus = 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
+export interface Camera {
+    id: string;
+    name: string;
+    schoolId: string;
+    areaId: string;
+    area?: CameraArea;
+    snapshotUrl?: string;
+    streamUrl?: string;
+    status: CameraStatus;
+    lastSeenAt?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
 // Attendance Event
 export interface AttendanceEvent {
     id: string;

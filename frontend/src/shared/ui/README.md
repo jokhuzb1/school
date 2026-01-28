@@ -8,6 +8,7 @@ Bu papkada umumiy UI komponentlar joylashgan (FSD: shared/ui).
 - `StatItem` / `StatGroup`
 - `Layout`
 - `ProtectedRoute`
+- `UiGallery` (dev-only)
 
 ## Visual preview
 
