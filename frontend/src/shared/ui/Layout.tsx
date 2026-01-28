@@ -8,23 +8,40 @@ import {
   theme,
 } from "antd";
 import {
-  DashboardOutlined,
-  TeamOutlined,
-  CalendarOutlined,
-  BookOutlined,
-  ApiOutlined,
-  SettingOutlined,
-  BankOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   UserOutlined,
   LogoutOutlined,
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
-import { useSchool } from "../hooks/useSchool";
+import { useAuth } from "../../hooks/useAuth";
+import { useSchool } from "../../hooks/useSchool";
+import { buildMenuItems } from "./layoutMenu";
 
 const { Header, Sider, Content } = AntLayout;
+
+const headerStyle = {
+  padding: "0 24px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+} as const;
+const headerRightStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 16,
+} as const;
+const logoContainerStyle = {
+  height: 64,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+} as const;
+const contentStyle = {
+  margin: 24,
+  padding: 24,
+  minHeight: 280,
+} as const;
 
 const Layout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
@@ -54,91 +71,12 @@ const Layout: React.FC = () => {
     },
   ];
 
-  // Menu items based on role
-  const getMenuItems = () => {
-    // SuperAdmin o'z panelida (maktab ko'rmayapti)
-    if (isSuperAdmin && !isViewingSchool) {
-      return [
-        { key: "/dashboard", icon: <DashboardOutlined />, label: "Boshqaruv" },
-        { key: "/schools", icon: <BankOutlined />, label: "Maktablar" },
-        { key: "/settings", icon: <SettingOutlined />, label: "Sozlamalar" },
-      ];
-    }
-
-    // Maktab paneli (SuperAdmin yoki oddiy admin/teacher/guard)
-    const prefix = schoolId ? `/schools/${schoolId}` : "";
-    const userRole = user?.role;
-
-    // Base items for all school users
-    const items = [
-      {
-        key: `${prefix}/dashboard`,
-        icon: <DashboardOutlined />,
-        label: "Boshqaruv",
-      },
-      {
-        key: `${prefix}/students`,
-        icon: <TeamOutlined />,
-        label: "O'quvchilar",
-      },
-      {
-        key: `${prefix}/attendance`,
-        icon: <CalendarOutlined />,
-        label: "Davomat",
-      },
-      { key: `${prefix}/classes`, icon: <BookOutlined />, label: "Sinflar" },
-    ];
-
-    // GUARD: read-only monitoring, no write/admin features
-    if (userRole === "GUARD") {
-      items.push({
-        key: `${prefix}/devices`,
-        icon: <ApiOutlined />,
-        label: "Qurilmalar",
-      });
-    }
-
-    // TEACHER: read assigned classes, no device/holiday/settings
-    if (userRole === "TEACHER") {
-      // teacher sees dashboard, students (own classes), attendance (own), classes (own)
-      // no devices, holidays, settings
-    }
-
-    // SCHOOL_ADMIN: full access
-    if (userRole === "SCHOOL_ADMIN" || isSuperAdmin) {
-      items.push({
-        key: `${prefix}/devices`,
-        icon: <ApiOutlined />,
-        label: "Qurilmalar",
-      });
-      items.push({
-        key: `${prefix}/holidays`,
-        icon: <CalendarOutlined />,
-        label: "Bayramlar",
-      });
-      items.push({
-        key: `${prefix}/users`,
-        icon: <TeamOutlined />,
-        label: "Xodimlar",
-      });
-      items.push({
-        key: `${prefix}/settings`,
-        icon: <SettingOutlined />,
-        label: "Sozlamalar",
-      });
-    }
-
-    // SuperAdmin uchun "Orqaga" tugmasi
-    if (isSuperAdmin && isViewingSchool) {
-      items.unshift({
-        key: "/schools",
-        icon: <BankOutlined />,
-        label: "<- Maktablar",
-      });
-    }
-
-    return items;
-  };
+  const menuItems = buildMenuItems({
+    isSuperAdmin,
+    isViewingSchool,
+    schoolId,
+    role: user?.role,
+  });
 
   return (
     <AntLayout style={{ minHeight: "100vh" }}>
@@ -155,10 +93,7 @@ const Layout: React.FC = () => {
       >
         <div
           style={{
-            height: 64,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            ...logoContainerStyle,
             borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
           }}
         >
@@ -175,7 +110,7 @@ const Layout: React.FC = () => {
         <Menu
           mode="inline"
           selectedKeys={[location.pathname]}
-          items={getMenuItems()}
+          items={menuItems}
           onClick={({ key }) => navigate(key)}
           style={{ borderRight: 0 }}
         />
@@ -183,12 +118,9 @@ const Layout: React.FC = () => {
       <AntLayout>
         <Header
           style={{
-            padding: "0 24px",
             background: themeToken.colorBgContainer,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
             borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
+            ...headerStyle,
           }}
         >
           <Button
@@ -196,7 +128,7 @@ const Layout: React.FC = () => {
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
           />
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={headerRightStyle}>
             <span>
               {isSuperAdmin && !isViewingSchool
                 ? "Barcha maktablar"
@@ -215,11 +147,9 @@ const Layout: React.FC = () => {
         </Header>
         <Content
           style={{
-            margin: 24,
-            padding: 24,
             background: themeToken.colorBgContainer,
             borderRadius: themeToken.borderRadius,
-            minHeight: 280,
+            ...contentStyle,
           }}
         >
           <Outlet />

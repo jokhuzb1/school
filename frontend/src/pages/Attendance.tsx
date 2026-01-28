@@ -33,8 +33,7 @@ import type {
 } from "../types";
 import { getAssetUrl } from "../config";
 import { useAuth } from "../hooks/useAuth";
-import { PageHeader } from "../components/PageHeader";
-import { StatItem, StatGroup } from "../components/StatItem";
+import { PageHeader, StatItem, StatGroup } from "../shared/ui";
 import dayjs from "dayjs";
 import {
   ATTENDANCE_STATUS_TAG,

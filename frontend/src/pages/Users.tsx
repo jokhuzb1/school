@@ -26,8 +26,7 @@ import { useSchool } from "../hooks/useSchool";
 import { usersService } from "../services/users";
 import type { User, CreateUserData, TeacherClass } from "../services/users";
 import { classesService } from "../services/classes";
-import { PageHeader, Divider } from "../components";
-import { StatItem } from "../components/StatItem";
+import { PageHeader, Divider, StatItem } from "../shared/ui";
 import type { Class } from "../types";
 
 const { Text } = Typography;

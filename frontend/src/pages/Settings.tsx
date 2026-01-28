@@ -7,8 +7,7 @@ import {
 } from '@ant-design/icons';
 import { useSchool } from '../hooks/useSchool';
 import { schoolsService } from '../services/schools';
-import { PageHeader } from '../components';
-import { StatItem } from '../components/StatItem';
+import { PageHeader, StatItem } from '../shared/ui';
 
 const Settings: React.FC = () => {
     const { schoolId } = useSchool();

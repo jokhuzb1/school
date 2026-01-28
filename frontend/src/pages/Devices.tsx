@@ -15,8 +15,7 @@ import {
 import { useSchool } from '../hooks/useSchool';
 import { devicesService } from '../services/devices';
 import { schoolsService } from '../services/schools';
-import { PageHeader, Divider } from '../components';
-import { StatItem } from '../components/StatItem';
+import { PageHeader, Divider, StatItem } from '../shared/ui';
 import type { Device } from '../types';
 import dayjs from 'dayjs';
 

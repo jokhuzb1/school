@@ -19,9 +19,8 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { schoolsService } from '../services/schools';
-import { PageHeader, Divider } from '../components';
+import { PageHeader, Divider, StatItem, StatGroup } from '../shared/ui';
 import { StatusBar } from '../entities/attendance';
-import { StatItem, StatGroup } from '../components/StatItem';
 import type { School, AttendanceScope } from '../types';
 
 const { Text } = Typography;

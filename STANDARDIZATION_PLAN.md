@@ -16,6 +16,11 @@ Maqsad: kod bazani DRY/KISS/SOLID tamoyillariga moslashtirish, hisoblash/label/s
 - Backend dashboard "not yet arrived/pending" ro'yxati `getPendingNotArrivedList` helperiga ko'chirildi.
 - Test infrasi qo'shildi (vitest) va `computeAttendanceStatus` uchun 4 ta asosiy scenario testlari yozildi.
 - Frontend `entities/attendance/model` qatlamiga stats/tag selectorlar ajratildi va Attendance/Students/StudentDetail/ClassDetail sahifalari shu helperlarni ishlatadi.
+- Frontend umumiy UI komponentlari `shared/ui` ga ko'chirildi (Layout, ProtectedRoute, PageHeader, StatItem) va sahifalar shu qatlamdan import qiladi; `components/*` shim sifatida qoldi.
+- `components/*` shimlar olib tashlandi (to'liq `shared/ui` va `entities/attendance` qatlamlari ishlatiladi).
+- Minimal UI docs: `shared/ui/README.md` va `UiGallery` demo komponenti qo'shildi.
+- UI komponentlarda DRY/KISS/SOLID: umumiy style konstantalar ajratildi.
+- UI tavsiyalariga ko'ra: Layout menu helper, `shared/ui/styles.ts` va StatusBar tooltip helper qo'shildi.
 
 ## 1. Audit va xaritalash (1-2 kun)
 - Barcha status va statistika hisoblanadigan joylarni ro'yxatlash.

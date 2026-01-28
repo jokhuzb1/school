@@ -2,8 +2,16 @@ import React from 'react';
 import { Card, Badge, Tooltip, Typography } from 'antd';
 import { ClockCircleOutlined, CalendarOutlined, WifiOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import {
+    headerContainerStyle,
+    headerMainContentStyle,
+    headerTimeRowStyle,
+    liveStatusTextStyle,
+    uiDividerStyle,
+} from './styles';
 
 const { Text } = Typography;
+
 
 interface PageHeaderProps {
     children: React.ReactNode;
@@ -34,11 +42,11 @@ const PageHeader: React.FC<PageHeaderProps> = ({
 
     return (
         <Card size="small" style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div style={headerContainerStyle}>
                 {/* Vaqt */}
                 {showTime && (
                     <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={headerTimeRowStyle}>
                             <ClockCircleOutlined style={{ fontSize: 16, color: '#1890ff' }} />
                             <Text strong style={{ fontSize: 16 }}>{currentTime.format('HH:mm')}</Text>
                             <Text type="secondary" style={{ fontSize: 12 }}>
@@ -57,7 +65,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
                             <Badge
                                 status={isConnected ? 'success' : 'error'}
                                 text={
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                                    <span style={liveStatusTextStyle}>
                                         <WifiOutlined style={{ color: isConnected ? '#52c41a' : '#ff4d4f' }} />
                                         {isConnected ? 'Jonli' : 'Oflayn'}
                                     </span>
@@ -69,7 +77,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
                 )}
 
                 {/* Main content (statistikalar, filterlar) */}
-                <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+                <div style={headerMainContentStyle}>
                     {children}
                 </div>
 
@@ -88,9 +96,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
 /**
  * Vertikal divider - header ichida
  */
-const Divider: React.FC = () => (
-    <div style={{ width: 1, height: 24, background: '#e8e8e8' }} />
-);
+const Divider: React.FC = () => <div style={uiDividerStyle} />;
 
 export { PageHeader, Divider };
 export default PageHeader;

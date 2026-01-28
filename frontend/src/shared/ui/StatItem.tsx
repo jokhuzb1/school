@@ -1,7 +1,13 @@
 import React from 'react';
 import { Tooltip, Typography } from 'antd';
+import { flexRowWrap, statGroupDividerStyle } from './styles';
 
 const { Text } = Typography;
+
+const groupContainerStyle: React.CSSProperties = {
+    ...flexRowWrap,
+    gap: 16,
+};
 
 interface StatItemProps {
     icon: React.ReactNode;
@@ -66,12 +72,12 @@ const StatGroup: React.FC<StatGroupProps> = ({ children, showDividers = true }) 
     const childArray = React.Children.toArray(children);
     
     return (
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={groupContainerStyle}>
             {childArray.map((child, index) => (
                 <React.Fragment key={index}>
                     {child}
                     {showDividers && index < childArray.length - 1 && (
-                        <div style={{ width: 1, height: 20, background: '#e8e8e8' }} />
+                        <div style={statGroupDividerStyle} />
                     )}
                 </React.Fragment>
             ))}

@@ -4,8 +4,7 @@ import { PlusOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutl
 import { useNavigate } from 'react-router-dom';
 import { useSchool } from '../hooks/useSchool';
 import { classesService } from '../services/classes';
-import { PageHeader, Divider } from '../components';
-import { StatItem } from '../components/StatItem';
+import { PageHeader, Divider, StatItem } from '../shared/ui';
 import type { Class } from '../types';
 import { ATTENDANCE_STATUS_TAG, STATUS_COLORS } from '../entities/attendance';
 

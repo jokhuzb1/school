@@ -11,8 +11,7 @@ import {
 } from '@ant-design/icons';
 import { useSchool } from '../hooks/useSchool';
 import { holidaysService } from '../services/holidays';
-import { PageHeader, Divider } from '../components';
-import { StatItem } from '../components/StatItem';
+import { PageHeader, Divider, StatItem } from '../shared/ui';
 import type { Holiday } from '../types';
 import dayjs, { Dayjs } from 'dayjs';
 

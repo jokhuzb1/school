@@ -51,8 +51,7 @@ import type { PeriodType, AttendanceScope } from "../types";
 import { schoolsService } from "../services/schools";
 import type { DashboardStats, AttendanceEvent, School, Class } from "../types";
 import { classesService } from "../services/classes";
-import { PageHeader } from "../components/PageHeader";
-import { StatItem, StatGroup } from "../components/StatItem";
+import { PageHeader, StatItem, StatGroup } from "../shared/ui";
 import dayjs from "dayjs";
 import debounce from "lodash/debounce";
 import {

@@ -68,33 +68,15 @@ const StatusBar: React.FC<StatusBarProps> = ({
     },
   ].filter((s) => s.value > 0);
 
-  const tooltip = (
-    <div>
-      <div>
-        <Text>Kelgan:</Text> <Text strong>{present}</Text>
-      </div>
-      <div>
-        <Text>Kech qoldi:</Text> <Text strong>{late}</Text>
-      </div>
-      <div>
-        <Text>Kechikmoqda:</Text> <Text strong>{pendingLate}</Text>
-      </div>
-      <div>
-        <Text>Kelmadi:</Text> <Text strong>{absent}</Text>
-      </div>
-      <div>
-        <Text>Hali kelmagan:</Text> <Text strong>{pendingEarly}</Text>
-      </div>
-      {excused > 0 && (
-        <div>
-          <Text>Sababli:</Text> <Text strong>{excused}</Text>
-        </div>
-      )}
-      <div style={{ marginTop: 6 }}>
-        <Text type="secondary">Jami: {total}</Text>
-      </div>
-    </div>
-  );
+  const tooltip = renderTooltip({
+    present,
+    late,
+    pendingLate,
+    absent,
+    pendingEarly,
+    excused,
+    total,
+  });
 
   return (
     <Tooltip title={tooltip}>
@@ -122,3 +104,43 @@ const StatusBar: React.FC<StatusBarProps> = ({
 };
 
 export default StatusBar;
+
+function renderTooltip(params: {
+  present: number;
+  late: number;
+  pendingLate: number;
+  absent: number;
+  pendingEarly: number;
+  excused: number;
+  total: number;
+}) {
+  const { present, late, pendingLate, absent, pendingEarly, excused, total } =
+    params;
+  return (
+    <div>
+      <div>
+        <Text>Kelgan:</Text> <Text strong>{present}</Text>
+      </div>
+      <div>
+        <Text>Kech qoldi:</Text> <Text strong>{late}</Text>
+      </div>
+      <div>
+        <Text>Kechikmoqda:</Text> <Text strong>{pendingLate}</Text>
+      </div>
+      <div>
+        <Text>Kelmadi:</Text> <Text strong>{absent}</Text>
+      </div>
+      <div>
+        <Text>Hali kelmagan:</Text> <Text strong>{pendingEarly}</Text>
+      </div>
+      {excused > 0 && (
+        <div>
+          <Text>Sababli:</Text> <Text strong>{excused}</Text>
+        </div>
+      )}
+      <div style={{ marginTop: 6 }}>
+        <Text type="secondary">Jami: {total}</Text>
+      </div>
+    </div>
+  );
+}

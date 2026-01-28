@@ -1,8 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ConfigProvider, App as AppAntd } from "antd";
 import { AuthProvider } from "./context/AuthContext";
-import ProtectedRoute from "./components/ProtectedRoute";
-import Layout from "./components/Layout";
+import { ProtectedRoute, Layout } from "./shared/ui";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
@@ -16,6 +15,7 @@ import Holidays from "./pages/Holidays";
 import Settings from "./pages/Settings";
 import Schools from "./pages/Schools";
 import Users from "./pages/Users";
+import { UiGallery } from "./shared/ui";
 
 function App() {
   return (
@@ -147,16 +147,21 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                <Route
-                  path="schools/:schoolId/settings"
-                  element={
-                    <ProtectedRoute requiredRoles={["SCHOOL_ADMIN"]}>
-                      <Settings />
-                    </ProtectedRoute>
-                  }
-                />
+              <Route
+                path="schools/:schoolId/settings"
+                element={
+                  <ProtectedRoute requiredRoles={["SCHOOL_ADMIN"]}>
+                    <Settings />
+                  </ProtectedRoute>
+                }
+              />
 
-                {/* Student detail (no school prefix needed) */}
+              {/* Dev-only UI gallery */}
+              {import.meta.env.DEV && (
+                <Route path="ui-gallery" element={<UiGallery />} />
+              )}
+
+              {/* Student detail (no school prefix needed) */}
                 <Route
                   path="students/:id"
                   element={

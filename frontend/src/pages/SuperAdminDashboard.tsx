@@ -40,8 +40,7 @@ import { useNavigate } from "react-router-dom";
 import { dashboardService } from "../services/dashboard";
 import type { PeriodType, AttendanceScope } from "../types";
 import { useAdminSSE } from "../hooks/useAdminSSE";
-import { PageHeader } from "../components/PageHeader";
-import { StatItem, StatGroup } from "../components/StatItem";
+import { PageHeader, StatItem, StatGroup } from "../shared/ui";
 import {
   EFFECTIVE_STATUS_META,
   STATUS_COLORS,
