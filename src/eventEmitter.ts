@@ -1,4 +1,6 @@
 import { EventEmitter } from 'events';
+import Redis from "ioredis";
+import { REDIS_URL } from "./config";
 
 // Global event emitter for real-time attendance events
 export const attendanceEmitter = new EventEmitter();
@@ -10,6 +12,44 @@ attendanceEmitter.setMaxListeners(0); // 0 = unlimited listeners
 // SuperAdmin dashboard uchun global event emitter
 export const adminEmitter = new EventEmitter();
 adminEmitter.setMaxListeners(0); // unlimited for scalability
+
+const ATTENDANCE_CHANNEL = "attendance_events";
+
+let pub: Redis | null = null;
+let sub: Redis | null = null;
+
+if (REDIS_URL) {
+  pub = new Redis(REDIS_URL);
+  sub = new Redis(REDIS_URL);
+
+  sub.subscribe(ATTENDANCE_CHANNEL, (err) => {
+    if (err) {
+      // eslint-disable-next-line no-console
+      console.error("Redis subscribe error:", err);
+    }
+  });
+
+  sub.on("message", (channel, message) => {
+    if (channel !== ATTENDANCE_CHANNEL) return;
+    try {
+      const payload = JSON.parse(message);
+      attendanceEmitter.emit("attendance", payload);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Redis message parse error:", err);
+    }
+  });
+}
+
+export const emitAttendance = (payload: AttendanceEventPayload) => {
+  if (pub) {
+    pub.publish(ATTENDANCE_CHANNEL, JSON.stringify(payload)).catch(() => {
+      attendanceEmitter.emit("attendance", payload);
+    });
+    return;
+  }
+  attendanceEmitter.emit("attendance", payload);
+};
 
 // Connection tracking for monitoring
 let activeConnections = 0;

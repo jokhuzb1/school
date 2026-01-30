@@ -1,12 +1,13 @@
 import { FastifyInstance, FastifyRequest } from "fastify";
 import prisma from "../../../prisma";
-import { attendanceEmitter } from "../../../eventEmitter";
+import { emitAttendance } from "../../../eventEmitter";
 import { markClassDirty, markSchoolDirty } from "../../../realtime/snapshotScheduler";
-import { MultipartFile } from "@fastify/multipart";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { getDateOnlyInZone, getTimePartsInZone } from "../../../utils/date";
 import { logAudit } from "../../../utils/audit";
+import { IS_PROD, WEBHOOK_ENFORCE_SECRET, WEBHOOK_SECRET_HEADER } from "../../../config";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
@@ -72,6 +73,10 @@ const handleAttendanceEvent = async (
   const eventType = direction === "in" ? "IN" : "OUT";
   const schoolTimeZone = school?.timezone || "Asia/Tashkent";
   const dateOnly = getDateOnlyInZone(new Date(dateTime), schoolTimeZone);
+  const eventKey = crypto
+    .createHash("sha256")
+    .update(`${deviceID}:${employeeNoString}:${dateTime}:${direction}`)
+    .digest("hex");
 
   // ✅ OPTIMIZATION 1: Parallel queries - device va student ni bir vaqtda olish
   const [device, studentWithClass] = await Promise.all([
@@ -107,143 +112,128 @@ const handleAttendanceEvent = async (
   }
   
 
-  // ✅ OPTIMIZATION 2: AttendanceEvent yaratish va DailyAttendance ni parallel tekshirish
-  const [event, existing] = await Promise.all([
-    prisma.attendanceEvent.create({
-      data: {
-        studentId: student?.id,
-        schoolId: school.id,
-        deviceId: device?.id,
-        eventType,
-        timestamp: eventTime,
-        rawPayload: { ...rawPayload, _savedPicture: savedPicturePath },
-      },
-    }),
-    student
-      ? prisma.dailyAttendance.findUnique({
-          where: { studentId_date: { studentId: student.id, date: dateOnly } },
-        })
-      : null,
-  ]);
+  let event: any = null;
+  let statusReason: string | null = null;
+  let computedDiff: number | null = null;
+  let updatedStatus: string | null = null;
+  let createdStatus: string | null = null;
+  let createdLateMinutes: number | null = null;
 
-  if (student) {
-    const MIN_SCAN_INTERVAL = 2 * 60 * 1000; // 2 daqiqa
+  try {
+    const txResult = await prisma.$transaction(async (tx) => {
+      const existing = student
+        ? await tx.dailyAttendance.findUnique({
+            where: { studentId_date: { studentId: student.id, date: dateOnly } },
+          })
+        : null;
 
-    if (existing) {
-      // Duplicate scan tekshirish
-      if (eventType === "IN" && existing.currentlyInSchool && existing.lastInTime) {
-        const timeSinceLastIn = eventTime.getTime() - new Date(existing.lastInTime).getTime();
-        if (timeSinceLastIn < MIN_SCAN_INTERVAL) {
-          audit({
-            action: "webhook.duplicate_scan",
-            level: "info",
-            message: "Duplikat IN scan bekor qilindi",
-            extra: { eventType, timeSinceLastIn },
-          });
-          return { ok: true, ignored: true, reason: "duplicate_scan" };
-        }
-      }
-      if (eventType === "OUT" && !existing.currentlyInSchool && existing.lastOutTime) {
-        const timeSinceLastOut = eventTime.getTime() - new Date(existing.lastOutTime).getTime();
-        if (timeSinceLastOut < MIN_SCAN_INTERVAL) {
-          audit({
-            action: "webhook.duplicate_scan",
-            level: "info",
-            message: "Duplikat OUT scan bekor qilindi",
-            extra: { eventType, timeSinceLastOut },
-          });
-          return { ok: true, ignored: true, reason: "duplicate_scan" };
-        }
-      }
-
-      // Update data tayyorlash
-      const update: any = {
-        lastScanTime: eventTime,
-        scanCount: existing.scanCount + 1,
-      };
-      let computedDiff: number | null = null;
-      let statusReason: string | null = null;
-
-      if (eventType === "IN") {
-        if (!existing.firstScanTime && cls) {
-          const [h, m] = cls.startTime.split(":").map(Number);
-          const timeParts = getTimePartsInZone(eventTime, schoolTimeZone);
-          const diff = timeParts.hours * 60 + timeParts.minutes - (h * 60 + m);
-          const afterAbsenceCutoff = diff >= school.absenceCutoffMinutes;
-          computedDiff = diff;
-
-          if (existing.status === "ABSENT") {
-            // Statusni ABSENT sifatida saqlab qolamiz (cutoffdan keyin kelgan bo'lsa ham)
-            update.status = "ABSENT";
-            update.lateMinutes = null;
-            statusReason = "existing_absent";
-          } else if (afterAbsenceCutoff) {
-            update.status = "ABSENT";
-            update.lateMinutes = null;
-            statusReason = "absent_cutoff";
-          } else if (diff >= school.lateThresholdMinutes) {
-            update.status = "LATE";
-            update.lateMinutes = Math.round(diff - school.lateThresholdMinutes);
-            statusReason = "late_threshold";
-          } else {
-            update.status = "PRESENT";
-            update.lateMinutes = null;
-            statusReason = "present";
+      if (student && existing) {
+        const MIN_SCAN_INTERVAL = 2 * 60 * 1000; // 2 daqiqa
+        if (
+          eventType === "IN" &&
+          existing.currentlyInSchool &&
+          existing.lastInTime
+        ) {
+          const timeSinceLastIn =
+            eventTime.getTime() - new Date(existing.lastInTime).getTime();
+          if (timeSinceLastIn < MIN_SCAN_INTERVAL) {
+            return { kind: "duplicate_scan" as const, event: null, existing };
           }
         }
-        if (!existing.firstScanTime) {
-          update.firstScanTime = eventTime;
-        }
-        update.lastInTime = eventTime;
-        update.currentlyInSchool = true;
-      } else {
-        update.lastOutTime = eventTime;
-        update.currentlyInSchool = false;
-        if (existing.lastInTime && existing.currentlyInSchool) {
-          const sessionMinutes = Math.round(
-            (eventTime.getTime() - new Date(existing.lastInTime).getTime()) / 60000
-          );
-          if (sessionMinutes > 0 && sessionMinutes < 720) {
-            update.totalTimeOnPremises = (existing.totalTimeOnPremises || 0) + sessionMinutes;
+        if (
+          eventType === "OUT" &&
+          !existing.currentlyInSchool &&
+          existing.lastOutTime
+        ) {
+          const timeSinceLastOut =
+            eventTime.getTime() - new Date(existing.lastOutTime).getTime();
+          if (timeSinceLastOut < MIN_SCAN_INTERVAL) {
+            return { kind: "duplicate_scan" as const, event: null, existing };
           }
         }
       }
 
-      // ✅ OPTIMIZATION 3: Photo update va DailyAttendance update ni parallel
-      const newStatus = update.status || existing.status;
-      audit({
-        action: "webhook.attendance.update",
-        level: "info",
-        message: `Holat ${existing.status} → ${newStatus}`,
-        extra: {
-          diff: computedDiff,
-          reason: statusReason,
+      const createdEvent = await tx.attendanceEvent.create({
+        data: {
+          eventKey,
+          studentId: student?.id,
+          schoolId: school.id,
+          deviceId: device?.id,
           eventType,
-          oldStatus: existing.status,
-          newStatus,
-          lateMinutes: update.lateMinutes,
-        },
+          timestamp: eventTime,
+          rawPayload: { ...rawPayload, _savedPicture: savedPicturePath },
+        } as any,
       });
 
-      const updatePromises: Promise<any>[] = [
-        prisma.dailyAttendance.update({
-          where: { id: existing.id },
-          data: update,
-        }),
-      ];
-
-      if (savedPicturePath) {
-        updatePromises.push(
-          prisma.student.update({
-            where: { id: student.id },
-            data: { photoUrl: savedPicturePath },
-          }).catch(() => {}) // Ignore photo update errors
-        );
+      if (!student) {
+        return { kind: "event_only" as const, event: createdEvent, existing: null };
       }
 
-      await Promise.all(updatePromises);
-    } else {
-      // Yangi DailyAttendance yaratish
+      if (existing) {
+        const update: any = {
+          lastScanTime: eventTime,
+          scanCount: existing.scanCount + 1,
+        };
+
+        if (eventType === "IN") {
+          if (!existing.firstScanTime && cls) {
+            const [h, m] = cls.startTime.split(":").map(Number);
+            const timeParts = getTimePartsInZone(eventTime, schoolTimeZone);
+            const diff = timeParts.hours * 60 + timeParts.minutes - (h * 60 + m);
+            const afterAbsenceCutoff = diff >= school.absenceCutoffMinutes;
+            computedDiff = diff;
+
+            if (existing.status === "ABSENT") {
+              update.status = "ABSENT";
+              update.lateMinutes = null;
+              statusReason = "existing_absent";
+            } else if (afterAbsenceCutoff) {
+              update.status = "ABSENT";
+              update.lateMinutes = null;
+              statusReason = "absent_cutoff";
+            } else if (diff >= school.lateThresholdMinutes) {
+              update.status = "LATE";
+              update.lateMinutes = Math.round(
+                diff - school.lateThresholdMinutes,
+              );
+              statusReason = "late_threshold";
+            } else {
+              update.status = "PRESENT";
+              update.lateMinutes = null;
+              statusReason = "present";
+            }
+          }
+          if (!existing.firstScanTime) {
+            update.firstScanTime = eventTime;
+          }
+          update.lastInTime = eventTime;
+          update.currentlyInSchool = true;
+        } else {
+          update.lastOutTime = eventTime;
+          update.currentlyInSchool = false;
+          if (existing.lastInTime && existing.currentlyInSchool) {
+            const sessionMinutes = Math.round(
+              (eventTime.getTime() -
+                new Date(existing.lastInTime).getTime()) /
+                60000,
+            );
+            if (sessionMinutes > 0 && sessionMinutes < 720) {
+              update.totalTimeOnPremises =
+                (existing.totalTimeOnPremises || 0) + sessionMinutes;
+            }
+          }
+        }
+
+        updatedStatus = update.status || existing.status;
+
+        await tx.dailyAttendance.update({
+          where: { id: existing.id },
+          data: update,
+        });
+
+        return { kind: "updated" as const, event: createdEvent, existing };
+      }
+
       let status: any = "PRESENT";
       let lateMinutes: number | null = null;
 
@@ -260,47 +250,87 @@ const handleAttendanceEvent = async (
         }
       }
 
-      // ✅ OPTIMIZATION 4: Create va photo update parallel
-      const createPromises: Promise<any>[] = [
-        prisma.dailyAttendance.create({
-          data: {
-            studentId: student.id,
-            schoolId: school.id,
-            date: dateOnly,
-            status,
-            firstScanTime: eventType === "IN" ? eventTime : null,
-            lastScanTime: eventTime,
-            lateMinutes,
-            lastInTime: eventType === "IN" ? eventTime : null,
-            lastOutTime: eventType === "OUT" ? eventTime : null,
-            currentlyInSchool: eventType === "IN",
-            scanCount: 1,
-            notes: eventType === "OUT" ? "OUT before first IN" : null,
-          },
-        }),
-      ];
+      createdStatus = status;
+      createdLateMinutes = lateMinutes;
 
-      if (savedPicturePath) {
-        createPromises.push(
-          prisma.student.update({
-            where: { id: student.id },
-            data: { photoUrl: savedPicturePath },
-          }).catch(() => {})
-        );
-      }
-
-      await Promise.all(createPromises);
-      audit({
-        action: "webhook.attendance.create",
-        level: "info",
-        message: `Yangi rekord: ${status}`,
-        extra: {
-          eventType,
+      await tx.dailyAttendance.create({
+        data: {
+          studentId: student.id,
+          schoolId: school.id,
+          date: dateOnly,
           status,
+          firstScanTime: eventType === "IN" ? eventTime : null,
+          lastScanTime: eventTime,
           lateMinutes,
+          lastInTime: eventType === "IN" ? eventTime : null,
+          lastOutTime: eventType === "OUT" ? eventTime : null,
+          currentlyInSchool: eventType === "IN",
+          scanCount: 1,
+          notes: eventType === "OUT" ? "OUT before first IN" : null,
         },
       });
+
+      return { kind: "created" as const, event: createdEvent, existing: null };
+    });
+
+    if (txResult.kind === "duplicate_scan") {
+      audit({
+        action: "webhook.duplicate_scan",
+        level: "info",
+        message: "Duplikat scan bekor qilindi",
+        extra: { eventType },
+      });
+      return { ok: true, ignored: true, reason: "duplicate_scan" };
     }
+
+    event = txResult.event;
+  } catch (err: any) {
+    if (err?.code === "P2002") {
+      audit({
+        action: "webhook.duplicate_event",
+        level: "info",
+        message: "Duplikat event bekor qilindi",
+        extra: { eventKey, direction },
+      });
+      return { ok: true, ignored: true, reason: "duplicate_event" };
+    }
+    throw err;
+  }
+
+  if (student && updatedStatus) {
+    audit({
+      action: "webhook.attendance.update",
+      level: "info",
+      message: `Holat yangilandi`,
+      extra: {
+        diff: computedDiff,
+        reason: statusReason,
+        eventType,
+        newStatus: updatedStatus,
+      },
+    });
+  }
+
+  if (student && createdStatus) {
+    audit({
+      action: "webhook.attendance.create",
+      level: "info",
+      message: `Yangi rekord: ${createdStatus}`,
+      extra: {
+        eventType,
+        status: createdStatus,
+        lateMinutes: createdLateMinutes,
+      },
+    });
+  }
+
+  if (student && savedPicturePath) {
+    prisma.student
+      .update({
+        where: { id: student.id },
+        data: { photoUrl: savedPicturePath },
+      })
+      .catch(() => {});
   }
 
   // ✅ OPTIMIZATION 5: Event emission - sinxron emas, fire-and-forget
@@ -320,7 +350,7 @@ const handleAttendanceEvent = async (
   };
 
   // Emit to school-specific listeners
-  attendanceEmitter.emit("attendance", eventPayload);
+  emitAttendance(eventPayload);
 
   markSchoolDirty(school.id);
   if (eventPayload.event?.student?.classId) {
@@ -346,6 +376,9 @@ export default async function (fastify: FastifyInstance) {
 
   fastify.post("/webhook/:schoolId/:direction", async (request: any, reply) => {
     const params = request.params as { schoolId: string; direction: string };
+    if (!["in", "out"].includes(params.direction)) {
+      return reply.status(400).send({ error: "Invalid direction" });
+    }
 
     // Try to find school by UUID first, then by name/slug
     let school = await prisma.school.findUnique({
@@ -383,16 +416,27 @@ export default async function (fastify: FastifyInstance) {
       return reply.status(404).send({ error: "School not found" });
     }
 
-    console.log("=== WEBHOOK REQUEST START ===");
-    console.log("School:", school.name, school.id);
-    console.log("Direction:", params.direction);
-    console.log("Content-Type:", request.headers["content-type"]);
+    if (!IS_PROD) {
+      console.log("=== WEBHOOK REQUEST START ===");
+      console.log("School:", school.name, school.id);
+      console.log("Direction:", params.direction);
+      console.log("Content-Type:", request.headers["content-type"]);
+    }
 
-    // verify secret query param (disabled for testing—Hikvision can't add query params)
-    // TODO: Re-enable or replace with IP whitelist for production
-    // const secret = request.query?.secret as string | undefined;
-    // const expected = params.direction === 'in' ? school.webhookSecretIn : school.webhookSecretOut;
-    // if (!secret || secret !== expected) return reply.status(403).send({ error: 'Invalid webhook secret' });
+    if (WEBHOOK_ENFORCE_SECRET) {
+      const secretFromQuery = request.query?.secret as string | undefined;
+      const secretFromHeader = request.headers[WEBHOOK_SECRET_HEADER] as
+        | string
+        | undefined;
+      const providedSecret = secretFromQuery || secretFromHeader;
+      const expected =
+        params.direction === "in"
+          ? school.webhookSecretIn
+          : school.webhookSecretOut;
+      if (!providedSecret || providedSecret !== expected) {
+        return reply.status(403).send({ error: "Invalid webhook secret" });
+      }
+    }
 
     let accessEventJson: any = null;
     let picture: any = null;
@@ -401,17 +445,19 @@ export default async function (fastify: FastifyInstance) {
       const contentType = request.headers["content-type"] || "";
 
       // Since we use addToBody: true, multipart fields are in request.body
-      console.log("=== REQUEST BODY DEBUG ===");
-      console.log("Body type:", typeof request.body);
-      console.log(
-        "Body keys:",
-        request.body ? Object.keys(request.body) : "null",
-      );
-      console.log(
-        "Full body:",
-        JSON.stringify(request.body, null, 2).substring(0, 2000),
-      );
-      console.log("==========================");
+      if (!IS_PROD) {
+        console.log("=== REQUEST BODY DEBUG ===");
+        console.log("Body type:", typeof request.body);
+        console.log(
+          "Body keys:",
+          request.body ? Object.keys(request.body) : "null",
+        );
+        console.log(
+          "Full body:",
+          JSON.stringify(request.body, null, 2).substring(0, 2000),
+        );
+        console.log("==========================");
+      }
 
       if (contentType.includes("multipart")) {
         // With addToBody: true, fields are directly in request.body
@@ -452,7 +498,9 @@ export default async function (fastify: FastifyInstance) {
         }
       } else {
         // Non-multipart - try JSON
-        console.log("Non-multipart request, body:", request.body);
+        if (!IS_PROD) {
+          console.log("Non-multipart request, body:", request.body);
+        }
         if (request.body?.AccessControllerEvent) {
           accessEventJson = request.body.AccessControllerEvent;
         } else if (request.body) {
@@ -472,14 +520,16 @@ export default async function (fastify: FastifyInstance) {
     }
 
     // Log all received event data for debugging
-    console.log("=== WEBHOOK EVENT RECEIVED ===");
-    console.log("School ID:", params.schoolId);
-    console.log("Direction:", params.direction);
-    console.log(
-      "Full AccessControllerEvent:",
-      JSON.stringify(accessEventJson, null, 2),
-    );
-    console.log("==============================");
+    if (!IS_PROD) {
+      console.log("=== WEBHOOK EVENT RECEIVED ===");
+      console.log("School ID:", params.schoolId);
+      console.log("Direction:", params.direction);
+      console.log(
+        "Full AccessControllerEvent:",
+        JSON.stringify(accessEventJson, null, 2),
+      );
+      console.log("==============================");
+    }
 
     const normalized = normalizeEvent(accessEventJson);
     if (!normalized) {
@@ -506,11 +556,13 @@ export default async function (fastify: FastifyInstance) {
       },
     });
 
-    console.log("Processing face recognition event:");
-    console.log("  - employeeNoString:", normalized.employeeNoString);
-    console.log("  - deviceID:", normalized.deviceID);
-    console.log("  - dateTime:", normalized.dateTime);
-    console.log("  - studentName:", normalized.studentName);
+    if (!IS_PROD) {
+      console.log("Processing face recognition event:");
+      console.log("  - employeeNoString:", normalized.employeeNoString);
+      console.log("  - deviceID:", normalized.deviceID);
+      console.log("  - dateTime:", normalized.dateTime);
+      console.log("  - studentName:", normalized.studentName);
+    }
 
     // save picture (if provided) - addToBody gives us Buffer or array
     let savedPicturePath: string | null = null;

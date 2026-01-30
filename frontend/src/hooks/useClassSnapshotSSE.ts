@@ -4,6 +4,7 @@ import type {
   SchoolSnapshotStats,
   SchoolSnapshotPayload,
 } from "./useSchoolSnapshotSSE";
+import { getSseToken } from "../services/sse";
 
 export interface ClassSnapshotPayload
   extends Omit<SchoolSnapshotPayload, "type" | "schoolId"> {
@@ -39,13 +40,24 @@ export const useClassSnapshotSSE = (
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!schoolId || !classId || !enabled) return;
 
-    const token = localStorage.getItem("token");
+    const useShortToken =
+      import.meta.env.PROD ||
+      import.meta.env.VITE_SSE_USE_TOKEN_ENDPOINT === "true";
+    let token = localStorage.getItem("token");
     if (!token) {
       setError("No auth token");
       return;
+    }
+    if (useShortToken) {
+      try {
+        token = await getSseToken();
+      } catch (err) {
+        setError("Failed to get SSE token");
+        return;
+      }
     }
 
     if (eventSourceRef.current) {

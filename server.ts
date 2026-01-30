@@ -2,10 +2,9 @@ import Fastify from "fastify";
 import fastifyJwt from "@fastify/jwt";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
-import dotenv from "dotenv";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import path from "path";
-
-dotenv.config({ path: path.join(__dirname, ".env") });
 
 import prisma from "./src/prisma";
 import authRoutes from "./src/routes/auth";
@@ -23,16 +22,37 @@ import camerasRoutes from "./src/routes/cameras";
 import searchRoutes from "./src/routes/search";
 import { registerJobs } from "./src/cron/jobs";
 import { startSnapshotScheduler } from "./src/realtime/snapshotScheduler";
-
-const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
-const JWT_SECRET = process.env.JWT_SECRET || "secret";
+import {
+  CORS_ORIGINS,
+  IS_PROD,
+  JWT_SECRET,
+  PORT,
+} from "./src/config";
 
 const server = Fastify({ logger: true });
 
+server.register(helmet, {
+  global: true,
+  contentSecurityPolicy: IS_PROD ? undefined : false,
+});
+
+if (IS_PROD) {
+  server.register(rateLimit, {
+    max: 200,
+    timeWindow: "1 minute",
+    allowList: [],
+  });
+}
+
 server.register(require("@fastify/cors"), {
-  origin: (origin, cb) => {
-    // Allow all origins in development
-    cb(null, true);
+  origin: (
+    origin: string | undefined,
+    cb: (err: Error | null, allow?: boolean) => void,
+  ) => {
+    if (!IS_PROD) return cb(null, true);
+    if (!origin) return cb(null, false);
+    if (CORS_ORIGINS.length === 0) return cb(null, false);
+    return cb(null, CORS_ORIGINS.includes(origin));
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization", "Accept"],

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { API_BASE_URL } from '../config';
+import { getSseToken } from '../services/sse';
 
 // Admin SSE event types
 interface AdminSSEEvent {
@@ -74,13 +75,24 @@ export const useAdminSSE = (options: UseAdminSSEOptions = {}) => {
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 10;
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!enabled) return;
 
-    const token = localStorage.getItem('token');
+    const useShortToken =
+      import.meta.env.PROD ||
+      import.meta.env.VITE_SSE_USE_TOKEN_ENDPOINT === "true";
+    let token = localStorage.getItem('token');
     if (!token) {
       setError('No auth token');
       return;
+    }
+    if (useShortToken) {
+      try {
+        token = await getSseToken();
+      } catch (err) {
+        setError("Failed to get SSE token");
+        return;
+      }
     }
 
     // Close existing connection

@@ -138,6 +138,7 @@ enum DeviceType {
 
 model AttendanceEvent {
   id         String   @id @default(uuid())
+  eventKey   String   @unique
   studentId  String?
   student    Student? @relation(fields: [studentId], references: [id])
   schoolId   String

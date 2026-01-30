@@ -1,6 +1,7 @@
 import { PrismaClient, AttendanceStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { getLocalDateKey, getLocalDateOnly } from "../src/utils/date";
+import crypto from "crypto";
 
 const prisma = new PrismaClient();
 
@@ -132,7 +133,10 @@ async function main() {
     `Generating ${dateList.length} days of attendance (latest: ${getLocalDateKey(
       new Date(),
     )})`,
-  );
+);
+
+const buildEventKey = (parts: string[]) =>
+  crypto.createHash("sha256").update(parts.join(":")).digest("hex");
 
   if (config.includeBaseSeed) {
     console.log("Creating base seed data...");
@@ -398,23 +402,37 @@ async function main() {
         });
 
         if (config.withEvents && firstScanTime) {
+          const inKey = buildEventKey([
+            "seed",
+            student.id,
+            "IN",
+            firstScanTime.toISOString(),
+          ]);
           eventBatch.push({
+            eventKey: inKey,
             studentId: student.id,
             schoolId: school.id,
             deviceId: device.id,
             eventType: "IN",
             timestamp: firstScanTime,
             rawPayload: { seed: true, direction: "in" },
-          });
+          } as any);
           if (lastOutTime) {
+            const outKey = buildEventKey([
+              "seed",
+              student.id,
+              "OUT",
+              lastOutTime.toISOString(),
+            ]);
             eventBatch.push({
+              eventKey: outKey,
               studentId: student.id,
               schoolId: school.id,
               deviceId: device.id,
               eventType: "OUT",
               timestamp: lastOutTime,
               rawPayload: { seed: true, direction: "out" },
-            });
+            } as any);
           }
         }
 

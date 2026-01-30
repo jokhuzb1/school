@@ -17,6 +17,7 @@ import {
   computeSchoolSnapshot,
 } from "../../../realtime/snapshot.service";
 import prisma from "../../../prisma";
+import { IS_PROD } from "../../../config";
 
 export default async function (fastify: FastifyInstance) {
   // SSE endpoint for real-time attendance events (School Admin)
@@ -37,6 +38,9 @@ export default async function (fastify: FastifyInstance) {
         decoded = await fastify.jwt.verify(token);
       } catch (err) {
         return reply.status(401).send({ error: 'Invalid token' });
+      }
+      if (IS_PROD && !decoded?.sse) {
+        return reply.status(401).send({ error: "SSE token required" });
       }
 
       if (!['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'GUARD'].includes(decoded.role)) {
@@ -134,6 +138,9 @@ export default async function (fastify: FastifyInstance) {
       } catch (err) {
         return reply.status(401).send({ error: "Invalid token" });
       }
+      if (IS_PROD && !decoded?.sse) {
+        return reply.status(401).send({ error: "SSE token required" });
+      }
 
       if (!["SUPER_ADMIN", "SCHOOL_ADMIN", "GUARD"].includes(decoded.role)) {
         return reply.status(403).send({ error: "Access denied" });
@@ -215,6 +222,9 @@ export default async function (fastify: FastifyInstance) {
         decoded = await fastify.jwt.verify(token);
       } catch (err) {
         return reply.status(401).send({ error: "Invalid token" });
+      }
+      if (IS_PROD && !decoded?.sse) {
+        return reply.status(401).send({ error: "SSE token required" });
       }
 
       if (
@@ -325,6 +335,9 @@ export default async function (fastify: FastifyInstance) {
       } catch (err) {
         return reply.status(401).send({ error: 'Invalid token' });
       }
+      if (IS_PROD && !decoded?.sse) {
+        return reply.status(401).send({ error: "SSE token required" });
+      }
 
       if (!['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'GUARD'].includes(decoded.role)) {
         return reply.status(403).send({ error: 'Access denied' });
@@ -419,6 +432,9 @@ export default async function (fastify: FastifyInstance) {
         decoded = await fastify.jwt.verify(token);
       } catch (err) {
         return reply.status(401).send({ error: 'Invalid token' });
+      }
+      if (IS_PROD && !decoded?.sse) {
+        return reply.status(401).send({ error: "SSE token required" });
       }
 
       // Only SUPER_ADMIN can access this endpoint

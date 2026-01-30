@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { API_BASE_URL } from '../config';
+import { getSseToken } from '../services/sse';
 
 interface SSEEvent {
   type: 'connected' | 'attendance';
@@ -33,13 +34,24 @@ export const useAttendanceSSE = (
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!schoolId || !enabled) return;
 
-    const token = localStorage.getItem('token');
+    const useShortToken =
+      import.meta.env.PROD ||
+      import.meta.env.VITE_SSE_USE_TOKEN_ENDPOINT === "true";
+    let token = localStorage.getItem('token');
     if (!token) {
       setError('No auth token');
       return;
+    }
+    if (useShortToken) {
+      try {
+        token = await getSseToken();
+      } catch (err) {
+        setError("Failed to get SSE token");
+        return;
+      }
     }
 
     // Close existing connection
