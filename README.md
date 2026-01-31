@@ -80,3 +80,46 @@ Sample sync payload:
   ]
 }
 ```
+
+WebRTC (Hikvision standard)
+
+- This project returns WHEP URLs at `GET /cameras/:id/stream`.
+- You must run a WebRTC/RTSP relay (recommended: MediaMTX).
+- Set `WEBRTC_BASE_URL` to your MediaMTX host (e.g. `http://localhost:8889`).
+- For each camera, create a MediaMTX path that pulls from its RTSP URL.
+
+Example MediaMTX path (one camera):
+
+```yaml
+paths:
+  schools/school-1/cameras/cam-1:
+    source: rtsp://user:pass@192.168.1.50:554/Streaming/Channels/101
+```
+
+The UI will request `WEBRTC_BASE_URL + /whep/schools/<schoolId>/cameras/<cameraId|externalId>`.
+
+ONVIF Auto-Sync
+
+- Endpoint: `POST /nvrs/:id/onvif-sync`
+- It reads ONVIF profiles and creates/updates cameras with stream URLs.
+- For Hikvision NVRs, channel numbers are parsed from RTSP (e.g. `/Streaming/Channels/101` -> channel 1).
+- Timeout and concurrency are controlled by `ONVIF_TIMEOUT_MS` and `ONVIF_CONCURRENCY`.
+
+MediaMTX Config Export (UI)
+
+- In UI -> NVR tab -> "MediaMTX Config" downloads a ready YAML file.
+- Upload it to your MediaMTX server and restart MediaMTX.
+- School-wide config is available at `GET /schools/:schoolId/mediamtx-config`.
+
+MediaMTX Deploy (UI)
+
+- If `MEDIAMTX_DEPLOY_ENABLED=true`, UI can deploy config via SSH or Docker.
+- Local deploy writes the config to a local path and can optionally run a restart command.
+- Endpoints:
+  - `POST /nvrs/:id/mediamtx-deploy`
+  - `POST /schools/:schoolId/mediamtx-deploy`
+
+WebRTC ICE (STUN/TURN)
+
+- Configure in UI (Cameras -> NVR tab -> "WebRTC sozlama") or via `VITE_WEBRTC_ICE_SERVERS`.
+- Example: `[{"urls":"stun:stun.l.google.com:19302"}]`

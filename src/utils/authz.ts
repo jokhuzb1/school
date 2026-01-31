@@ -87,7 +87,6 @@ export async function requireCameraAreaSchoolScope(user: any, areaId: string) {
 export async function requireCameraSchoolScope(user: any, cameraId: string) {
   const camera = await prisma.camera.findUnique({
     where: { id: cameraId },
-    select: { id: true, schoolId: true },
   });
   if (!camera) throw new NotFoundError('not found');
   requireSchoolScope(user, camera.schoolId);

@@ -40,3 +40,16 @@ export const MIN_SCAN_INTERVAL_SECONDS = Number(
 export const NVR_HEALTH_TIMEOUT_MS = Number(
   process.env.NVR_HEALTH_TIMEOUT_MS || "3000",
 );
+
+export const WEBRTC_BASE_URL = process.env.WEBRTC_BASE_URL || "";
+
+export const ONVIF_TIMEOUT_MS = Number(
+  process.env.ONVIF_TIMEOUT_MS || "5000",
+);
+export const ONVIF_CONCURRENCY = Number(
+  process.env.ONVIF_CONCURRENCY || "4",
+);
+
+export const MEDIAMTX_DEPLOY_ENABLED =
+  process.env.MEDIAMTX_DEPLOY_ENABLED === "true" ||
+  process.env.MEDIAMTX_DEPLOY_ENABLED === "1";

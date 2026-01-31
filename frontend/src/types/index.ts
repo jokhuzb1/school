@@ -14,6 +14,31 @@ export type DeviceType = 'ENTRANCE' | 'EXIT';
 // Event type
 export type EventType = 'IN' | 'OUT';
 
+// NVR
+export type NvrProtocol = 'ONVIF' | 'RTSP' | 'HYBRID';
+export interface Nvr {
+    id: string;
+    schoolId: string;
+    name: string;
+    vendor?: string | null;
+    model?: string | null;
+    host: string;
+    httpPort: number;
+    onvifPort: number;
+    rtspPort: number;
+    username: string;
+    protocol: NvrProtocol;
+    isActive: boolean;
+    lastHealthCheckAt?: string | null;
+    lastHealthStatus?: string | null;
+    lastHealthError?: string | null;
+    lastSyncAt?: string | null;
+    lastSyncStatus?: string | null;
+    lastSyncError?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
 // School
 export interface School {
     id: string;
@@ -116,9 +141,12 @@ export interface CameraArea {
     id: string;
     name: string;
     schoolId: string;
+    nvrId?: string | null;
+    externalId?: string | null;
     description?: string;
     createdAt: string;
     updatedAt: string;
+    _count?: { cameras: number };
 }
 
 // Camera
@@ -127,14 +155,26 @@ export interface Camera {
     id: string;
     name: string;
     schoolId: string;
-    areaId: string;
+    areaId?: string | null;
+    nvrId?: string | null;
+    externalId?: string | null;
+    channelNo?: number | null;
     area?: CameraArea;
     snapshotUrl?: string;
     streamUrl?: string;
     status: CameraStatus;
+    isActive?: boolean;
     lastSeenAt?: string;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface CameraStreamInfo {
+    cameraId: string;
+    webrtcUrl?: string | null;
+    webrtcPath?: string | null;
+    rtspUrl?: string | null;
+    rtspSource?: string | null;
 }
 
 export type SearchItem = {

@@ -17,9 +17,9 @@
   },
   "dependencies": {
     "@fastify/cors": "^8.5.0",
+    "@fastify/helmet": "^11.1.1",
     "@fastify/jwt": "^7.0.0",
     "@fastify/multipart": "^7.7.0",
-    "@fastify/helmet": "^11.1.1",
     "@fastify/rate-limit": "^9.1.0",
     "@fastify/static": "^7.0.4",
     "@prisma/client": "^5.0.0",
@@ -29,6 +29,7 @@
     "fastify": "^4.20.0",
     "ioredis": "^5.3.2",
     "node-cron": "^3.0.2",
+    "onvif": "^0.8.1",
     "prisma": "^5.0.0"
   },
   "devDependencies": {

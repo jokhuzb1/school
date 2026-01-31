@@ -1,0 +1,24 @@
+# H.265 (HEVC) - HLS orqali ko'rsatiladi
+# Main stream - yuqori sifat
+
+paths:
+  # Kamera 1 - MAIN STREAM (H.265)
+  schools/4521bf61-2255-4bf0-be33-5d56fd9f6a87/cameras/db1cbc98-6063-4e7f-91af-35c8c6ea9915:
+    source: rtsp://admin:Paa123nv@192.168.100.58:554/ch1/main/av_stream
+    rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandCloseAfter: 10s
+
+  # Kamera 2 - MAIN STREAM (H.265)
+  schools/4521bf61-2255-4bf0-be33-5d56fd9f6a87/cameras/4996e6d7-330f-4afb-898b-d2af577339ee:
+    source: rtsp://admin:Paa123nv@192.168.100.58:554/ch2/main/av_stream
+    rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandCloseAfter: 10s
+
+  # Kamera 3 - MAIN STREAM (H.265)
+  schools/4521bf61-2255-4bf0-be33-5d56fd9f6a87/cameras/62f2612a-50bc-4a02-abfe-3f53903f4f4a:
+    source: rtsp://admin:Paa123nv@192.168.100.58:554/ch2/main/av_stream
+    rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandCloseAfter: 10s
