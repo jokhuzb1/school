@@ -1,25 +1,30 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider, App as AppAntd } from 'antd';
-import { AuthProvider } from './context/AuthContext';
-import ProtectedRoute from './components/ProtectedRoute';
-import Layout from './components/Layout';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Students from './pages/Students';
-import StudentDetail from './pages/StudentDetail';
-import Attendance from './pages/Attendance';
-import Classes from './pages/Classes';
-import Devices from './pages/Devices';
-import Holidays from './pages/Holidays';
-import Settings from './pages/Settings';
-import Schools from './pages/Schools';
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { ConfigProvider, App as AppAntd } from "antd";
+import { AuthProvider } from "./context/AuthContext";
+import { ProtectedRoute, Layout } from "./shared/ui";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import Students from "./pages/Students";
+import StudentDetail from "./pages/StudentDetail";
+import Attendance from "./pages/Attendance";
+import Classes from "./pages/Classes";
+import ClassDetail from "./pages/ClassDetail";
+import Devices from "./pages/Devices";
+import Holidays from "./pages/Holidays";
+import Settings from "./pages/Settings";
+import Schools from "./pages/Schools";
+import Users from "./pages/Users";
+import { UiGallery } from "./shared/ui";
+import Cameras from "./pages/Cameras";
+import CamerasSuperAdmin from "./pages/CamerasSuperAdmin";
 
 function App() {
   return (
     <ConfigProvider
       theme={{
         token: {
-          colorPrimary: '#1890ff',
+          colorPrimary: "#1890ff",
           borderRadius: 6,
         },
       }}
@@ -40,23 +45,163 @@ function App() {
                 }
               >
                 <Route index element={<Navigate to="/dashboard" replace />} />
-                <Route path="dashboard" element={<Dashboard />} />
+                <Route
+                  path="dashboard"
+                  element={
+                    <ProtectedRoute requiredRoles={["SUPER_ADMIN"]}>
+                      <SuperAdminDashboard />
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* Super Admin routes */}
-                <Route path="schools" element={<Schools />} />
-                <Route path="settings" element={<Settings />} />
+                <Route
+                  path="schools"
+                  element={
+                    <ProtectedRoute requiredRoles={["SUPER_ADMIN"]}>
+                      <Schools />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="cameras"
+                  element={
+                    <ProtectedRoute requiredRoles={["SUPER_ADMIN"]}>
+                      <CamerasSuperAdmin />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="settings"
+                  element={
+                    <ProtectedRoute requiredRoles={["SUPER_ADMIN"]}>
+                      <Settings />
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* School-specific routes */}
-                <Route path="schools/:schoolId/dashboard" element={<Dashboard />} />
-                <Route path="schools/:schoolId/students" element={<Students />} />
-                <Route path="schools/:schoolId/attendance" element={<Attendance />} />
-                <Route path="schools/:schoolId/classes" element={<Classes />} />
-                <Route path="schools/:schoolId/devices" element={<Devices />} />
-                <Route path="schools/:schoolId/holidays" element={<Holidays />} />
-                <Route path="schools/:schoolId/settings" element={<Settings />} />
+                <Route
+                  path="schools/:schoolId/dashboard"
+                  element={
+                    <ProtectedRoute
+                      requiredRoles={["SCHOOL_ADMIN", "TEACHER", "GUARD"]}
+                    >
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="schools/:schoolId/students"
+                  element={
+                    <ProtectedRoute
+                      requiredRoles={["SCHOOL_ADMIN", "TEACHER", "GUARD"]}
+                    >
+                      <Students />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="schools/:schoolId/attendance"
+                  element={
+                    <ProtectedRoute
+                      requiredRoles={["SCHOOL_ADMIN", "TEACHER", "GUARD"]}
+                    >
+                      <Attendance />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="schools/:schoolId/classes"
+                  element={
+                    <ProtectedRoute
+                      requiredRoles={["SCHOOL_ADMIN", "TEACHER", "GUARD"]}
+                    >
+                      <Classes />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="schools/:schoolId/classes/:classId"
+                  element={
+                    <ProtectedRoute
+                      requiredRoles={["SCHOOL_ADMIN", "TEACHER", "GUARD"]}
+                    >
+                      <ClassDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="schools/:schoolId/cameras"
+                  element={
+                    <ProtectedRoute
+                      requiredRoles={["SCHOOL_ADMIN", "GUARD", "SUPER_ADMIN"]}
+                    >
+                      <Cameras />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="schools/:schoolId/devices"
+                  element={
+                    <ProtectedRoute requiredRoles={["SCHOOL_ADMIN", "GUARD"]}>
+                      <Devices />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="schools/:schoolId/holidays"
+                  element={
+                    <ProtectedRoute requiredRoles={["SCHOOL_ADMIN"]}>
+                      <Holidays />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="schools/:schoolId/users"
+                  element={
+                    <ProtectedRoute
+                      requiredRoles={["SCHOOL_ADMIN", "SUPER_ADMIN"]}
+                    >
+                      <Users />
+                    </ProtectedRoute>
+                  }
+                />
+              <Route
+                path="schools/:schoolId/settings"
+                element={
+                  <ProtectedRoute requiredRoles={["SCHOOL_ADMIN"]}>
+                    <Settings />
+                  </ProtectedRoute>
+                }
+              />
 
-                {/* Student detail (no school prefix needed) */}
-                <Route path="students/:id" element={<StudentDetail />} />
+              {/* Dev-only UI gallery */}
+              {import.meta.env.DEV && (
+                <Route path="ui-gallery" element={<UiGallery />} />
+              )}
+
+              {/* Student detail (no school prefix needed) */}
+                <Route
+                  path="students/:id"
+                  element={
+                    <ProtectedRoute
+                      requiredRoles={["SCHOOL_ADMIN", "TEACHER", "GUARD"]}
+                    >
+                      <StudentDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="classes/:classId"
+                  element={
+                    <ProtectedRoute
+                      requiredRoles={["SCHOOL_ADMIN", "TEACHER", "GUARD"]}
+                    >
+                      <ClassDetail />
+                    </ProtectedRoute>
+                  }
+                />
               </Route>
 
               <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -1,0 +1,11 @@
+logLevel: info
+
+rtsp: true
+rtspAddress: :8554
+
+webrtc: true
+webrtcAddress: :8889
+
+paths:
+  schools/REPLACE_SCHOOL_ID/cameras/REPLACE_CAMERA_ID_OR_EXTERNAL:
+    source: rtsp://REPLACE_USER:REPLACE_PASS@REPLACE_NVR_IP:554/Streaming/Channels/101

@@ -1,9 +1,10 @@
 import api from './api';
-import type { School } from '../types';
+import type { School, AttendanceScope } from '../types';
 
 export const schoolsService = {
-    async getAll(): Promise<School[]> {
-        const response = await api.get<School[]>('/schools');
+    async getAll(scope?: AttendanceScope): Promise<School[]> {
+        const params = scope ? { scope } : undefined;
+        const response = await api.get<School[]>('/schools', { params });
         return response.data;
     },
 
