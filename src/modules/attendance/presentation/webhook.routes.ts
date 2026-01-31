@@ -7,7 +7,12 @@ import path from "path";
 import crypto from "crypto";
 import { getDateOnlyInZone, getTimePartsInZone } from "../../../utils/date";
 import { logAudit } from "../../../utils/audit";
-import { IS_PROD, WEBHOOK_ENFORCE_SECRET, WEBHOOK_SECRET_HEADER } from "../../../config";
+import {
+  IS_PROD,
+  MIN_SCAN_INTERVAL_SECONDS,
+  WEBHOOK_ENFORCE_SECRET,
+  WEBHOOK_SECRET_HEADER,
+} from "../../../config";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
@@ -73,6 +78,8 @@ const handleAttendanceEvent = async (
   const eventType = direction === "in" ? "IN" : "OUT";
   const schoolTimeZone = school?.timezone || "Asia/Tashkent";
   const dateOnly = getDateOnlyInZone(new Date(dateTime), schoolTimeZone);
+  const todayDate = getDateOnlyInZone(new Date(), schoolTimeZone);
+  const isTodayEvent = dateOnly.getTime() === todayDate.getTime();
   const eventKey = crypto
     .createHash("sha256")
     .update(`${deviceID}:${employeeNoString}:${dateTime}:${direction}`)
@@ -128,7 +135,7 @@ const handleAttendanceEvent = async (
         : null;
 
       if (student && existing) {
-        const MIN_SCAN_INTERVAL = 2 * 60 * 1000; // 2 daqiqa
+        const MIN_SCAN_INTERVAL = Math.max(0, MIN_SCAN_INTERVAL_SECONDS) * 1000;
         if (
           eventType === "IN" &&
           existing.currentlyInSchool &&
@@ -349,12 +356,14 @@ const handleAttendanceEvent = async (
     },
   };
 
-  // Emit to school-specific listeners
-  emitAttendance(eventPayload);
+  if (isTodayEvent) {
+    // Emit to school-specific listeners (today only)
+    emitAttendance(eventPayload);
 
-  markSchoolDirty(school.id);
-  if (eventPayload.event?.student?.classId) {
-    markClassDirty(school.id, eventPayload.event.student.classId);
+    markSchoolDirty(school.id);
+    if (eventPayload.event?.student?.classId) {
+      markClassDirty(school.id, eventPayload.event.student.classId);
+    }
   }
 
   return { ok: true, event };

@@ -92,6 +92,17 @@ const Devices: React.FC = () => {
         }
     };
 
+    const formatWebhookPath = (value?: string) => {
+        if (!value) return '';
+        if (value.startsWith('/')) return value;
+        try {
+            const url = new URL(value);
+            return `${url.pathname}${url.search}`;
+        } catch {
+            return value;
+        }
+    };
+
     const handleAdd = () => {
         setEditingId(null);
         form.resetFields();
@@ -281,13 +292,13 @@ const Devices: React.FC = () => {
                                             <LoginOutlined style={{ color: '#52c41a' }} /> Kirish webhooki:
                                         </Text>
                                         <Input.Group compact>
-                                            <Input value={webhookInfo.inUrl} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
+                                            <Input value={formatWebhookPath(webhookInfo.inUrl)} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
                                             <Tooltip title="Nusxalash">
                                                 <Button
                                                     icon={<CopyOutlined />}
                                                     size="small"
                                                     aria-label="Kirish webhook manzilini nusxalash"
-                                                    onClick={() => copyToClipboard(webhookInfo.inUrl)}
+                                                    onClick={() => copyToClipboard(formatWebhookPath(webhookInfo.inUrl))}
                                                 />
                                             </Tooltip>
                                         </Input.Group>
@@ -297,13 +308,13 @@ const Devices: React.FC = () => {
                                             <LogoutOutlined style={{ color: '#1890ff' }} /> Chiqish webhooki:
                                         </Text>
                                         <Input.Group compact>
-                                            <Input value={webhookInfo.outUrl} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
+                                            <Input value={formatWebhookPath(webhookInfo.outUrl)} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
                                             <Tooltip title="Nusxalash">
                                                 <Button
                                                     icon={<CopyOutlined />}
                                                     size="small"
                                                     aria-label="Chiqish webhook manzilini nusxalash"
-                                                    onClick={() => copyToClipboard(webhookInfo.outUrl)}
+                                                    onClick={() => copyToClipboard(formatWebhookPath(webhookInfo.outUrl))}
                                                 />
                                             </Tooltip>
                                         </Input.Group>

@@ -26,3 +26,7 @@ export const SSE_TOKEN_TTL_SECONDS = Number(
 );
 
 export const REDIS_URL = process.env.REDIS_URL || "";
+
+export const MIN_SCAN_INTERVAL_SECONDS = Number(
+  process.env.MIN_SCAN_INTERVAL_SECONDS || "120",
+);

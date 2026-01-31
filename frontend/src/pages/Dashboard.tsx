@@ -19,6 +19,8 @@ import {
   Calendar,
   Segmented,
   DatePicker,
+  Modal,
+  Button,
 } from "antd";
 import {
   TeamOutlined,
@@ -95,6 +97,25 @@ const Dashboard: React.FC = () => {
   const { schoolId } = useSchool();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRange, setHistoryRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
+    dayjs().subtract(6, "day"),
+    dayjs(),
+  ]);
+  const [historyEvents, setHistoryEvents] = useState<AttendanceEvent[]>([]);
+
+  const getEventStudentLabel = (event: AttendanceEvent) => {
+    const raw: any = event.rawPayload || {};
+    const fromAccess = raw.AccessControllerEvent || raw.accessControllerEvent || raw;
+    return (
+      event.student?.name ||
+      fromAccess?.name ||
+      fromAccess?.employeeNoString ||
+      event.studentId ||
+      "?"
+    );
+  };
   const [school, setSchool] = useState<School | null>(null);
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -169,6 +190,15 @@ const Dashboard: React.FC = () => {
 
       if (matchesClass) {
         setEvents((prev) => [typedEvent, ...prev].slice(0, 10));
+      }
+
+      if (historyOpen) {
+        const start = historyRange[0].startOf("day");
+        const end = historyRange[1].endOf("day");
+        const ts = dayjs(typedEvent.timestamp);
+        if (ts.isAfter(start) && ts.isBefore(end)) {
+          setHistoryEvents((prev) => [typedEvent, ...prev]);
+        }
       }
 
       if (schoolSnapshotEnabled || classSnapshotEnabled) return;
@@ -338,6 +368,24 @@ const Dashboard: React.FC = () => {
       setLastUpdated,
     ],
   );
+
+  const loadHistory = useCallback(async () => {
+    if (!schoolId) return;
+    setHistoryLoading(true);
+    try {
+      const result = await dashboardService.getEventHistory(schoolId, {
+        startDate: historyRange[0].format("YYYY-MM-DD"),
+        endDate: historyRange[1].format("YYYY-MM-DD"),
+        classId: selectedClassId,
+        limit: 300,
+      });
+      setHistoryEvents(result.data || []);
+    } catch (err) {
+      console.error("Failed to load history:", err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [schoolId, historyRange, selectedClassId]);
 
   useEffect(() => {
     loadDashboard(true);
@@ -680,6 +728,17 @@ const Dashboard: React.FC = () => {
             styles={{
               body: { height: 240, overflowY: "auto", padding: "8px 12px" },
             }}
+            extra={
+              <Button
+                size="small"
+                onClick={() => {
+                  setHistoryOpen(true);
+                  loadHistory();
+                }}
+              >
+                Tarix
+              </Button>
+            }
           >
             {events.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -710,7 +769,7 @@ const Dashboard: React.FC = () => {
                         {dayjs(event.timestamp).format("HH:mm")}
                       </Text>
                       <Text style={{ fontSize: 11, flex: 1 }} ellipsis>
-                        {event.student?.name || "?"}
+                        {getEventStudentLabel(event)}
                       </Text>
                       <Text type="secondary" style={{ fontSize: 10 }}>
                         {event.student?.class?.name || ""}
@@ -931,6 +990,65 @@ const Dashboard: React.FC = () => {
           </div>
         </Card>
       )}
+
+      <Modal
+        title="Faoliyat tarixi"
+        open={historyOpen}
+        onCancel={() => setHistoryOpen(false)}
+        footer={[
+          <Button key="refresh" onClick={loadHistory} loading={historyLoading}>
+            Yangilash
+          </Button>,
+          <Button key="close" onClick={() => setHistoryOpen(false)}>
+            Yopish
+          </Button>,
+        ]}
+        width={640}
+      >
+        <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+          <RangePicker
+            value={historyRange}
+            onChange={(range) => {
+              if (range && range[0] && range[1]) {
+                setHistoryRange([range[0], range[1]]);
+              }
+            }}
+            format="DD.MM.YYYY"
+          />
+          <Button onClick={loadHistory} loading={historyLoading}>
+            Qidirish
+          </Button>
+        </div>
+        {historyEvents.length > 0 ? (
+          <List
+            size="small"
+            dataSource={historyEvents.slice(0, 200)}
+            renderItem={(event) => {
+              const eventTag = EVENT_TYPE_TAG[event.eventType];
+              return (
+                <List.Item>
+                  <Space size={8}>
+                    <Tag color={eventTag.color} style={{ margin: 0 }}>
+                      {eventTag.text}
+                    </Tag>
+                    <Text strong style={{ fontSize: 12 }}>
+                      {dayjs(event.timestamp).format("DD/MM HH:mm:ss")}
+                    </Text>
+                    <Text style={{ fontSize: 12 }}>
+                      {getEventStudentLabel(event)}
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {event.student?.class?.name || ""}
+                    </Text>
+                  </Space>
+                </List.Item>
+              );
+            }}
+          />
+        ) : (
+          <Empty description={historyLoading ? "Yuklanmoqda..." : "Ma'lumot yo'q"} />
+        )}
+      </Modal>
     </div>
   );
 };

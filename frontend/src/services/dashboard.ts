@@ -46,4 +46,12 @@ export const dashboardService = {
         const response = await api.get<AttendanceEvent[]>(`/schools/${schoolId}/events`, { params: { limit } });
         return response.data;
     },
+
+    async getEventHistory(
+        schoolId: string,
+        params: { startDate: string; endDate: string; limit?: number; classId?: string },
+    ): Promise<{ data: AttendanceEvent[]; timezone: string; startDate: string; endDate: string }> {
+        const response = await api.get(`/schools/${schoolId}/events/history`, { params });
+        return response.data;
+    },
 };

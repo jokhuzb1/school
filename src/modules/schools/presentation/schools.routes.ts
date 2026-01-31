@@ -324,10 +324,9 @@ export default async function (fastify: FastifyInstance) {
 
         const school = await prisma.school.findUnique({ where: { id } });
         if (!school) return reply.status(404).send({ error: "Not found" });
-        const base = `${request.protocol}://${request.hostname}`;
         return {
-          in: `${base}/webhook/${school.id}/in?secret=${school.webhookSecretIn}`,
-          out: `${base}/webhook/${school.id}/out?secret=${school.webhookSecretOut}`,
+          inUrl: `/webhook/${school.id}/in?secret=${school.webhookSecretIn}`,
+          outUrl: `/webhook/${school.id}/out?secret=${school.webhookSecretOut}`,
         };
       } catch (err) {
         return sendHttpError(reply, err);
