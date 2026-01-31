@@ -1025,8 +1025,8 @@ export default async function (fastify: FastifyInstance) {
         const isH265 = streamProfile === "main";
         const recommendedPlayer = isH265 ? "hls" : "webrtc";
 
-        // HLS URL for H.265 streams
-        const hlsUrl = `http://localhost:8888/${webrtcPath}/index.m3u8`;
+        // HLS URL for H.265 streams - frontend builds this dynamically
+        const hlsUrl = null;
 
         return {
           cameraId: camera.id,
