@@ -4,13 +4,15 @@
   "private": true,
   "main": "dist/server.js",
   "scripts": {
+    "predev": "npm run setup:mtx",
     "dev": "nodemon --watch 'src/**' --ext ts --exec ts-node --transpile-only ./server.ts",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "start": "node dist/server.js",
     "db:migrate": "prisma migrate dev --name init",
     "db:seed": "ts-node prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "setup:mtx": "ts-node scripts/setup-mediamtx.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
