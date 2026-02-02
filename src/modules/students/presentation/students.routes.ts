@@ -698,14 +698,56 @@ export default async function (fastify: FastifyInstance) {
       try {
         const { id } = request.params;
         const user = request.user;
-        const data = request.body;
+        const data = request.body || {};
 
         requireRoles(user, ["SCHOOL_ADMIN"]);
-        await requireStudentSchoolScope(user, id);
+        const studentScope = await requireStudentSchoolScope(user, id);
 
-        const student = await prisma.student.update({ where: { id }, data });
+        // Allowlist fields and normalize empty strings to null
+        const sanitized = {
+          name: data.name,
+          classId: data.classId,
+          deviceStudentId:
+            typeof data.deviceStudentId === "string" &&
+            data.deviceStudentId.trim() === ""
+              ? null
+              : data.deviceStudentId,
+          parentName:
+            typeof data.parentName === "string" && data.parentName.trim() === ""
+              ? null
+              : data.parentName,
+          parentPhone:
+            typeof data.parentPhone === "string" && data.parentPhone.trim() === ""
+              ? null
+              : data.parentPhone,
+        };
+
+        if (!sanitized.name) {
+          return reply.status(400).send({ error: "Ismni kiriting" });
+        }
+
+        if (!sanitized.classId) {
+          return reply.status(400).send({ error: "Sinf tanlanishi shart" });
+        }
+
+        const classExists = await prisma.class.findFirst({
+          where: { id: sanitized.classId, schoolId: studentScope.schoolId },
+        });
+        if (!classExists) {
+          return reply.status(400).send({ error: "Bunday sinf topilmadi" });
+        }
+
+        const student = await prisma.student.update({
+          where: { id },
+          data: sanitized,
+        });
         return student;
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.code === "P2002") {
+          return reply
+            .status(400)
+            .send({ error: "Qurilma ID takrorlangan" });
+        }
         return sendHttpError(reply, err);
       }
     },
