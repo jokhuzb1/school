@@ -22,6 +22,14 @@ import {
   EffectiveStatus,
 } from "../../../utils/attendanceStatus";
 
+function normalizeHeader(value: string): string {
+  return value
+    .trim()
+    .replace(/^\*/, "")
+    .trim()
+    .toLowerCase();
+}
+
 export default async function (fastify: FastifyInstance) {
   // Students list with period-based attendance stats
   fastify.get(
@@ -385,15 +393,44 @@ export default async function (fastify: FastifyInstance) {
         requireRoles(user, ["SCHOOL_ADMIN"]);
         requireSchoolScope(user, schoolId);
 
+        // Match iVMS "Person Information Template.xlsx" layout exactly:
+        // - A1..A8: rules
+        // - Row 9: headers
+        // - Add one extra column at the end: Photo
         const wb = new ExcelJS.Workbook();
-        const ws = wb.addWorksheet("Students");
-        ws.columns = [
-          { header: "Name", key: "name", width: 30 },
-          { header: "Device ID", key: "deviceStudentId", width: 15 },
-          { header: "Class", key: "class", width: 15 },
-          { header: "Parent Name", key: "parentName", width: 25 },
-          { header: "Parent Phone", key: "parentPhone", width: 20 },
+        const ws = wb.addWorksheet("Sheet1");
+
+        const rules = [
+          "\tRule:",
+          "\t1.The items with asterisk are required.",
+          "\t2.Gender 1:Male 2:Female",
+          "\t3.Date Format:YYYY/MM/DD",
+          "\t4.Seperate the card numbers with semicolon.",
+          "\t5.If the card number is started with 0, add ' before 0. For example, '012345.",
+          "\t6.Separate the organization hierarchies with /.",
+          "\t7.Format of Room No.:Take room 1 as an example, the room No. should be 1 or 1-1-1-1 (Project-Building-Unit-Room No.).",
         ];
+        rules.forEach((text, idx) => {
+          ws.getCell(`A${idx + 1}`).value = text;
+        });
+
+        const headers = [
+          "*Person ID",
+          "*Organization",
+          "*Person Name",
+          "*Gender",
+          "Contact",
+          "Email",
+          "Effective Time",
+          "Expiry Time",
+          "Card No.",
+          "Room No.",
+          "Floor No.",
+          "Photo",
+        ];
+        headers.forEach((h, idx) => {
+          ws.getRow(9).getCell(idx + 1).value = h;
+        });
 
         reply.header(
           "Content-Type",
@@ -401,7 +438,7 @@ export default async function (fastify: FastifyInstance) {
         );
         reply.header(
           "Content-Disposition",
-          'attachment; filename="students-template.xlsx"',
+          'attachment; filename="talabalar-shablon.xlsx"',
         );
 
         const buffer = await wb.xlsx.writeBuffer();
@@ -445,7 +482,8 @@ export default async function (fastify: FastifyInstance) {
         }
 
         const buffer = file.data;
-        if (buffer.length > 5 * 1024 * 1024) {
+        // Template may include embedded photos; allow larger imports.
+        if (buffer.length > 50 * 1024 * 1024) {
           return reply.status(400).send({ error: "File too large" });
         }
 
@@ -454,26 +492,76 @@ export default async function (fastify: FastifyInstance) {
         const ws = wb.getWorksheet(1);
         if (!ws) return reply.status(400).send({ error: "Invalid sheet" });
 
-        const expectedHeaders = [
-          "name",
-          "device id",
-          "class",
-          "parent name",
-          "parent phone",
-        ];
-        const headerValues = expectedHeaders.map((_, idx) =>
-          String(ws.getRow(1).getCell(idx + 1).text || "")
-            .trim()
-            .toLowerCase(),
-        );
-        const headerMismatch = expectedHeaders.some(
-          (h, i) => headerValues[i] !== h,
-        );
-        if (headerMismatch) {
+        // Find header row (either row 1 for internal templates, or row 9 for iVMS-style template).
+        let headerRowNumber = 1;
+        for (let r = 1; r <= 30; r++) {
+          const row = ws.getRow(r);
+          const texts = Array.from({ length: 20 }, (_, i) =>
+            normalizeHeader(String(row.getCell(i + 1).text || "")),
+          ).filter(Boolean);
+          if (
+            texts.includes("person id") &&
+            (texts.includes("person name") ||
+              texts.includes("name") ||
+              texts.includes("ism"))
+          ) {
+            headerRowNumber = r;
+            break;
+          }
+          if (texts.includes("device id") && (texts.includes("name") || texts.includes("ism"))) {
+            headerRowNumber = r;
+            break;
+          }
+        }
+
+        const headerRow = ws.getRow(headerRowNumber);
+        const headerMap = new Map<string, number>();
+        for (let c = 1; c <= 50; c++) {
+          const raw = String(headerRow.getCell(c).text || "");
+          const key = normalizeHeader(raw);
+          if (!key) continue;
+          if (!headerMap.has(key)) headerMap.set(key, c);
+        }
+
+        const isIvmsTemplate =
+          headerMap.has("person id") &&
+          headerMap.has("organization") &&
+          headerMap.has("person name") &&
+          headerMap.has("gender");
+
+        const isLegacyInternal =
+          headerMap.has("name") &&
+          headerMap.has("device id") &&
+          headerMap.has("class") &&
+          headerMap.has("parent name") &&
+          headerMap.has("parent phone");
+
+        const isNewInternal =
+          (headerMap.has("name") || headerMap.has("ism")) &&
+          headerMap.has("person id") &&
+          (headerMap.has("class") || headerMap.has("sinf")) &&
+          (headerMap.has("parent name") || headerMap.has("ota-ona ismi")) &&
+          (headerMap.has("parent phone") || headerMap.has("ota-ona telefoni"));
+
+        if (!isIvmsTemplate && !isLegacyInternal && !isNewInternal) {
           return reply.status(400).send({
             error: "Header mismatch. Please use the exported template.",
           });
         }
+
+        const dataStartRow = headerRowNumber + 1;
+        const colName =
+          headerMap.get("person name") ?? headerMap.get("name") ?? headerMap.get("ism");
+        const colPersonId =
+          headerMap.get("person id") ?? headerMap.get("device id");
+        const colClass =
+          headerMap.get("organization") ??
+          headerMap.get("class") ??
+          headerMap.get("sinf");
+        const colParentName =
+          headerMap.get("parent name") ?? headerMap.get("ota-ona ismi");
+        const colParentPhone =
+          headerMap.get("parent phone") ?? headerMap.get("ota-ona telefoni") ?? headerMap.get("contact");
 
         const classRows = await prisma.class.findMany({
           where: { schoolId },
@@ -499,17 +587,28 @@ export default async function (fastify: FastifyInstance) {
         }> = [];
         const missingClassNames = new Set<string>();
 
-        for (let i = 2; i <= lastRow; i++) {
+        for (let i = dataStartRow; i <= lastRow; i++) {
           const row = ws.getRow(i);
-          const name = row.getCell(1).text.trim();
-          const deviceStudentId = row.getCell(2).text.trim();
-          const className = row.getCell(3).text.trim();
-          const parentName = row.getCell(4).text.trim();
-          const parentPhone = row.getCell(5).text.trim();
+          const name = colName ? row.getCell(colName).text.trim() : "";
+          const deviceStudentId = colPersonId
+            ? row.getCell(colPersonId).text.trim()
+            : "";
+          const className = colClass ? row.getCell(colClass).text.trim() : "";
+          const parentName = colParentName
+            ? row.getCell(colParentName).text.trim()
+            : "";
+          const parentPhone = colParentPhone
+            ? row.getCell(colParentPhone).text.trim()
+            : "";
 
           if (!name || !deviceStudentId) {
             skippedCount++;
-            errors.push({ row: i, message: "Name and Device ID are required" });
+            errors.push({
+              row: i,
+              message: isIvmsTemplate
+                ? "Person Name and Person ID are required"
+                : "Name and Person ID are required",
+            });
             continue;
           }
           if (seenDeviceIds.has(deviceStudentId)) {

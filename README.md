@@ -126,3 +126,12 @@ WebRTC ICE (STUN/TURN)
 
 - Configure in UI (Cameras -> NVR tab -> "WebRTC sozlama") or via `VITE_WEBRTC_ICE_SERVERS`.
 - Example: `[{"urls":"stun:stun.l.google.com:19302"}]`
+
+Excel (iVMS-4200 face import prep)
+
+- Extract embedded images and name by `Person ID`:
+  - `npm run excel:extract-images -- --input "<file.xlsx>" --out ".\\out\\faces" [--sheet "<sheet>"] [--id-header "Person ID"] [--name-header "Name"]`
+  - Docs: `scripts/extract-excel-images.md`
+
+- Simple web UI (upload XLSX → download ZIP):
+  - Open: `GET /tools/excel-face-export`

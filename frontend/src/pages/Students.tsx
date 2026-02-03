@@ -229,7 +229,7 @@ const Students: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "students-template.xlsx");
+      link.setAttribute("download", "talabalar-shablon.xlsx");
       document.body.appendChild(link);
       link.click();
       link.remove();

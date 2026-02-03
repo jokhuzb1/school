@@ -12,7 +12,8 @@
     "db:migrate": "prisma migrate dev --name init",
     "db:seed": "ts-node prisma/seed.ts",
     "db:studio": "prisma studio",
-    "setup:mtx": "ts-node scripts/setup-mediamtx.ts"
+    "setup:mtx": "ts-node scripts/setup-mediamtx.ts",
+    "excel:extract-images": "ts-node scripts/extract-excel-images.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -30,6 +31,7 @@
     "exceljs": "^4.3.0",
     "fastify": "^4.20.0",
     "ioredis": "^5.3.2",
+    "jszip": "^3.10.1",
     "node-cron": "^3.0.2",
     "onvif": "^0.8.1",
     "prisma": "^5.0.0"
