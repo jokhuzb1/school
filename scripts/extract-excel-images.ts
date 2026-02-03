@@ -2,6 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import ExcelJS from "exceljs";
 
+const createWorkbook = () => new ExcelJS.Workbook();
+type Workbook = ReturnType<typeof createWorkbook>;
+type Worksheet = Workbook["worksheets"][number];
+type Cell = ReturnType<Worksheet["getCell"]>;
+
 type Args = {
   input: string;
   outDir: string;
@@ -58,7 +63,7 @@ function toSafeFilename(value: string): string {
     .slice(0, 120);
 }
 
-function cellText(cell: ExcelJS.Cell | undefined): string {
+function cellText(cell: Cell | undefined): string {
   if (!cell) return "";
   const v = cell.value as any;
   if (typeof v === "string") return v.trim();
@@ -68,10 +73,10 @@ function cellText(cell: ExcelJS.Cell | undefined): string {
   return String(cell.text ?? "").trim();
 }
 
-function getHeaderMap(worksheet: ExcelJS.Worksheet): Map<string, number> {
+function getHeaderMap(worksheet: Worksheet): Map<string, number> {
   const map = new Map<string, number>();
   const headerRow = worksheet.getRow(1);
-  headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+  headerRow.eachCell({ includeEmpty: false }, (cell: Cell, colNumber: number) => {
     const header = cellText(cell);
     if (!header) return;
     map.set(header.toLowerCase(), colNumber);
@@ -80,7 +85,7 @@ function getHeaderMap(worksheet: ExcelJS.Worksheet): Map<string, number> {
 }
 
 function findHeaderRow(
-  worksheet: ExcelJS.Worksheet,
+  worksheet: Worksheet,
   preferredIdHeader: string,
 ): { headerRowNumber: number; headers: Map<string, number> } {
   const preferred = preferredIdHeader.toLowerCase();
@@ -99,7 +104,7 @@ function findHeaderRow(
   for (let rowNumber = 1; rowNumber <= 20; rowNumber++) {
     const row = worksheet.getRow(rowNumber);
     const headers = new Map<string, number>();
-    row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+    row.eachCell({ includeEmpty: false }, (cell: Cell, colNumber: number) => {
       const header = cellText(cell);
       if (!header) return;
       headers.set(header.toLowerCase(), colNumber);
@@ -125,11 +130,11 @@ function ensureUniquePath(filePath: string): string {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const workbook = new ExcelJS.Workbook();
+  const workbook = createWorkbook();
   await workbook.xlsx.readFile(args.input);
 
   const worksheet = args.sheet
-    ? workbook.worksheets.find((ws) => ws.name === args.sheet)
+    ? workbook.worksheets.find((ws: Worksheet) => ws.name === args.sheet)
     : workbook.worksheets[0];
   if (!worksheet) throw new Error("Worksheet not found.");
 

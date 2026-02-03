@@ -15,4 +15,6 @@ async function main() {
   console.log("Updated camera streamUrl.");
 }
 
-main().catch(console.error).finally(() => prisma.$disconnect());
+main()
+  .catch(console.error)
+  .finally(() => prisma.$disconnect());

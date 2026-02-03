@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ConfigProvider, App as AppAntd } from "antd";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider } from "./context/AuthProvider";
 import { ProtectedRoute, Layout } from "./shared/ui";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";

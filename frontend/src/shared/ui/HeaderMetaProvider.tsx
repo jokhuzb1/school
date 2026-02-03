@@ -1,20 +1,8 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
-
-type HeaderMeta = {
-  showTime: boolean;
-  showLiveStatus: boolean;
-  isConnected: boolean;
-  lastUpdated: Date | null;
-  refresh?: (() => void | Promise<void>) | null;
-};
-
-type HeaderMetaContextValue = {
-  meta: HeaderMeta;
-  setMeta: (next: Partial<HeaderMeta>) => void;
-  setRefresh: (refresh?: (() => void | Promise<void>) | null) => void;
-  setLastUpdated: (date: Date | null) => void;
-  reset: () => void;
-};
+import React, { useCallback, useMemo, useState } from "react";
+import {
+  HeaderMetaContext,
+  type HeaderMeta,
+} from "./HeaderMetaContext";
 
 const defaultMeta: HeaderMeta = {
   showTime: true,
@@ -23,10 +11,6 @@ const defaultMeta: HeaderMeta = {
   lastUpdated: null,
   refresh: null,
 };
-
-const HeaderMetaContext = createContext<HeaderMetaContextValue | undefined>(
-  undefined,
-);
 
 export const HeaderMetaProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -78,10 +62,3 @@ export const HeaderMetaProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 };
 
-export const useHeaderMeta = () => {
-  const ctx = useContext(HeaderMetaContext);
-  if (!ctx) {
-    throw new Error("useHeaderMeta must be used within HeaderMetaProvider");
-  }
-  return ctx;
-};

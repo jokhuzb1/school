@@ -20,7 +20,6 @@ import sseRoutes from "./src/routes/sse";
 import usersRoutes from "./src/routes/users";
 import camerasRoutes from "./src/routes/cameras";
 import searchRoutes from "./src/routes/search";
-import toolsRoutes from "./src/routes/tools";
 import { registerJobs } from "./src/cron/jobs";
 import { startSnapshotScheduler } from "./src/realtime/snapshotScheduler";
 import { startMediaMtxAuto } from "./src/modules/cameras/services/mediamtx-runner.service";
@@ -94,7 +93,6 @@ server.register(adminDashboardRoutes, { prefix: "/" });
 server.register(sseRoutes, { prefix: "/" });
 server.register(camerasRoutes, { prefix: "/" });
 server.register(searchRoutes, { prefix: "/" });
-server.register(toolsRoutes, { prefix: "/" });
 
 const start = async () => {
   try {

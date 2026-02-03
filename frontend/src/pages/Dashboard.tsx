@@ -162,7 +162,14 @@ const Dashboard: React.FC = () => {
     } catch (err) {
       console.error("Failed to fetch stats:", err);
     }
-  }, [schoolId, selectedClassId, selectedPeriod, customDateRange, attendanceScope]);
+  }, [
+    schoolId,
+    selectedClassId,
+    selectedPeriod,
+    customDateRange,
+    attendanceScope,
+    setLastUpdated,
+  ]);
 
   // OPTIMIZATION: Debounced fetch - faqat 5 sekundda bir marta API chaqiriladi
   const debouncedFetchStats = useMemo(
@@ -242,6 +249,8 @@ const Dashboard: React.FC = () => {
       selectedClassId,
       schoolSnapshotEnabled,
       classSnapshotEnabled,
+      historyOpen,
+      historyRange,
     ],
   );
 

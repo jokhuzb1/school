@@ -116,7 +116,7 @@ const Attendance: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [schoolId, dateRange, classFilter, statusFilter]);
+  }, [schoolId, dateRange, classFilter, statusFilter, setLastUpdated]);
 
   const isTodayRange = useMemo(
     () =>

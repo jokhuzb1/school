@@ -106,7 +106,9 @@ async function setup() {
       if (fs.existsSync(DEST_FILE)) {
         try {
           fs.unlinkSync(DEST_FILE);
-        } catch {}
+        } catch (unlinkErr) {
+          console.warn("DEST_FILE could not be deleted:", unlinkErr);
+        }
       }
       console.log("✅ MediaMTX muvaffaqiyatli o'rnatildi.");
     } else {

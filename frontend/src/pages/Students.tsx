@@ -86,37 +86,48 @@ const Students: React.FC = () => {
     null,
   );
 
-  const fetchStudents = useCallback(async (silent = false) => {
-    if (!schoolId) return;
-    if (!silent) {
-      setLoading(true);
-    }
-    try {
-      const params: any = {
-        page,
-        search,
-        classId: classFilter,
-        period: selectedPeriod,
-      };
-
-      if (selectedPeriod === "custom" && customDateRange) {
-        params.startDate = customDateRange[0].format("YYYY-MM-DD");
-        params.endDate = customDateRange[1].format("YYYY-MM-DD");
-      }
-
-      const data = await studentsService.getAll(schoolId, params);
-      setStudents(data.data || []);
-      setTotal(data.total || 0);
-      setResponseData(data);
-      setLastUpdated(new Date());
-    } catch (err) {
-      console.error(err);
-    } finally {
+  const fetchStudents = useCallback(
+    async (silent = false) => {
+      if (!schoolId) return;
       if (!silent) {
-        setLoading(false);
+        setLoading(true);
       }
-    }
-  }, [schoolId, page, search, classFilter, selectedPeriod, customDateRange]);
+      try {
+        const params: any = {
+          page,
+          search,
+          classId: classFilter,
+          period: selectedPeriod,
+        };
+
+        if (selectedPeriod === "custom" && customDateRange) {
+          params.startDate = customDateRange[0].format("YYYY-MM-DD");
+          params.endDate = customDateRange[1].format("YYYY-MM-DD");
+        }
+
+        const data = await studentsService.getAll(schoolId, params);
+        setStudents(data.data || []);
+        setTotal(data.total || 0);
+        setResponseData(data);
+        setLastUpdated(new Date());
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [
+      schoolId,
+      page,
+      search,
+      classFilter,
+      selectedPeriod,
+      customDateRange,
+      setLastUpdated,
+    ],
+  );
 
   const fetchClasses = useCallback(async () => {
     if (!schoolId) return;
@@ -127,7 +138,7 @@ const Students: React.FC = () => {
     } catch (err) {
       console.error(err);
     }
-  }, [schoolId]);
+  }, [schoolId, setLastUpdated]);
 
   useEffect(() => {
     fetchStudents();
@@ -549,7 +560,9 @@ const Students: React.FC = () => {
           label={isSingleDay ? "kelmadi" : "yo'q (jami)"}
           color={STATUS_COLORS.ABSENT}
           tooltip={
-            isSingleDay ? "Kelmadi (cutoff o'tgan)" : "Vaqt oralig'ida kelmagan kunlar soni"
+            isSingleDay
+              ? "Kelmadi (cutoff o'tgan)"
+              : "Vaqt oralig'ida kelmagan kunlar soni"
           }
         />
         {isSingleDay && (stats.pendingLate || 0) > 0 && (
@@ -627,13 +640,13 @@ const Students: React.FC = () => {
             Sinf yo'q bo'lsa yaratish
           </Text>
         </Space>
-      <Button size="small" onClick={handleDownloadTemplate}>
-        Shablon
-      </Button>
-      <Button icon={<DownloadOutlined />} size="small" onClick={handleExport}>
-        Eksport
-      </Button>
-    </PageHeader>
+        <Button size="small" onClick={handleDownloadTemplate}>
+          Shablon
+        </Button>
+        <Button icon={<DownloadOutlined />} size="small" onClick={handleExport}>
+          Eksport
+        </Button>
+      </PageHeader>
 
       <Table
         dataSource={students}
@@ -673,7 +686,7 @@ const Students: React.FC = () => {
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Form.Item name="deviceStudentId" label="Qurilma ID (qurilmadagi)">
-            <Input placeholder="Qurilmadagi o'quvchi ID" />
+            <Input placeholder="Student ID" />
           </Form.Item>
           <Form.Item
             name="name"
