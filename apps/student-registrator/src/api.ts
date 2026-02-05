@@ -24,6 +24,29 @@ export interface RegisterResult {
   }>;
 }
 
+export interface ProvisioningDeviceLink {
+  id: string;
+  status: "PENDING" | "SUCCESS" | "FAILED";
+  deviceId: string;
+  employeeNoOnDevice?: string | null;
+  lastError?: string | null;
+  device?: {
+    id: string;
+    deviceId: string;
+    name: string;
+    location?: string | null;
+    isActive?: boolean;
+  };
+}
+
+export interface ProvisioningDetails {
+  id: string;
+  status: "PENDING" | "PROCESSING" | "PARTIAL" | "CONFIRMED" | "FAILED";
+  studentId: string;
+  schoolId: string;
+  lastError?: string | null;
+  devices?: ProvisioningDeviceLink[];
+}
 
 export interface UserInfoEntry {
   employeeNo: string;
@@ -166,8 +189,15 @@ export async function createClass(schoolId: string, name: string, gradeLevel: nu
     body: JSON.stringify({ name, gradeLevel }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || 'Failed to create class');
+    const text = await res.text().catch(() => '');
+    let message = 'Failed to create class';
+    try {
+      const err = text ? JSON.parse(text) : {};
+      message = err.message || err.error || message;
+    } catch {
+      if (text) message = text;
+    }
+    throw new Error(`${message} (status ${res.status})`);
   }
   return res.json();
 }
@@ -218,7 +248,7 @@ export async function registerStudent(
   name: string,
   gender: string,
   faceImageBase64: string,
-  options?: { parentName?: string; parentPhone?: string },
+  options?: { parentName?: string; parentPhone?: string; classId?: string },
 ): Promise<RegisterResult> {
   const token = getAuthToken();
   const user = getAuthUser();
@@ -229,6 +259,7 @@ export async function registerStudent(
     faceImageBase64,
     parentName: options?.parentName,
     parentPhone: options?.parentPhone,
+    classId: options?.classId,
     backendUrl: BACKEND_URL,
     backendToken: token || '',
     schoolId: user?.schoolId || '',
@@ -292,6 +323,32 @@ export async function fileToBase64(file: File): Promise<string> {
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+// ============ Provisioning ============
+
+export async function getProvisioning(
+  provisioningId: string,
+): Promise<ProvisioningDetails> {
+  const token = getAuthToken();
+  return invoke<ProvisioningDetails>('get_provisioning', {
+    provisioningId,
+    backendUrl: BACKEND_URL,
+    backendToken: token || '',
+  });
+}
+
+export async function retryProvisioning(
+  provisioningId: string,
+  deviceIds: string[] = [],
+): Promise<{ ok: boolean; updated?: number }> {
+  const token = getAuthToken();
+  return invoke<{ ok: boolean; updated?: number }>('retry_provisioning', {
+    provisioningId,
+    backendUrl: BACKEND_URL,
+    backendToken: token || '',
+    deviceIds,
   });
 }
 

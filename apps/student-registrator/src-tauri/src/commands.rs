@@ -7,6 +7,7 @@ use crate::api::ApiClient;
 use chrono::{Datelike, Local, Timelike};
 use uuid::Uuid;
 use std::collections::HashMap;
+use serde_json::Value;
 
 const MAX_FACE_IMAGE_BYTES: usize = 200 * 1024;
 
@@ -126,6 +127,7 @@ pub async fn register_student(
     face_image_base64: String,
     parent_name: Option<String>,
     parent_phone: Option<String>,
+    class_id: Option<String>,
     backend_url: Option<String>,
     backend_token: Option<String>,
     school_id: Option<String>,
@@ -164,9 +166,10 @@ pub async fn register_student(
             .start_provisioning(
                 &school_id,
                 &name,
-                None,
+                class_id.as_deref(),
                 parent_name.as_deref(),
                 parent_phone.as_deref(),
+                None,
                 &request_id,
             )
             .await
@@ -464,5 +467,36 @@ pub async fn recreate_user(
             "errorMsg": face_upload.error_msg
         }
     }))
+}
+
+// ============ Provisioning Commands ============
+
+#[tauri::command]
+pub async fn get_provisioning(
+    provisioning_id: String,
+    backend_url: Option<String>,
+    backend_token: Option<String>,
+) -> Result<Value, String> {
+    let backend_url = backend_url.filter(|v| !v.trim().is_empty())
+        .ok_or("backendUrl is required")?;
+    let backend_token = backend_token.filter(|v| !v.trim().is_empty());
+    let client = ApiClient::new(backend_url, backend_token);
+    client.get_provisioning(&provisioning_id).await
+}
+
+#[tauri::command]
+pub async fn retry_provisioning(
+    provisioning_id: String,
+    backend_url: Option<String>,
+    backend_token: Option<String>,
+    device_ids: Option<Vec<String>>,
+) -> Result<Value, String> {
+    let backend_url = backend_url.filter(|v| !v.trim().is_empty())
+        .ok_or("backendUrl is required")?;
+    let backend_token = backend_token.filter(|v| !v.trim().is_empty());
+    let client = ApiClient::new(backend_url, backend_token);
+    client
+        .retry_provisioning(&provisioning_id, device_ids.unwrap_or_default())
+        .await
 }
 

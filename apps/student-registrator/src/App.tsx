@@ -16,12 +16,15 @@ import {
   login,
   logout,
   getAuthUser,
+  getProvisioning,
+  retryProvisioning,
 
   fetchSchools,
   fetchClasses,
   createClass,
   type DeviceConfig,
   type RegisterResult,
+  type ProvisioningDetails,
   type UserInfoEntry,
   type UserInfoSearchResponse,
   type AuthUser,
@@ -130,6 +133,7 @@ interface ExcelRow {
   name: string;
   gender: string;
   className?: string;
+  classId?: string;
   parentName?: string;
   parentPhone?: string;
   imageBase64?: string;
@@ -151,20 +155,7 @@ const genders = [
   { value: "unknown", label: "Unknown" },
 ];
 
-// Sample class list - should come from API
-const classes = [
-  { value: "", label: "Select Class" },
-  { value: "1-A", label: "1-A" },
-  { value: "1-B", label: "1-B" },
-  { value: "2-A", label: "2-A" },
-  { value: "2-B", label: "2-B" },
-  { value: "3-A", label: "3-A" },
-  { value: "3-B", label: "3-B" },
-  { value: "4-A", label: "4-A" },
-  { value: "4-B", label: "4-B" },
-  { value: "5-A", label: "5-A" },
-  { value: "5-B", label: "5-B" },
-];
+// Classes come from backend based on selected school
 
 // ============ Login Screen Component ============
 interface LoginScreenProps {
@@ -324,6 +315,10 @@ function App() {
   const [registerResult, setRegisterResult] = useState<RegisterResult | null>(null);
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [registerLoading, setRegisterLoading] = useState(false);
+  const [provisioningId, setProvisioningId] = useState<string | null>(null);
+  const [provisioning, setProvisioning] = useState<ProvisioningDetails | null>(null);
+  const [provLoading, setProvLoading] = useState(false);
+  const [provError, setProvError] = useState<string | null>(null);
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [userList, setUserList] = useState<UserInfoSearchResponse | null>(null);
@@ -357,8 +352,10 @@ function App() {
   const [newClassName, setNewClassName] = useState("");
 
   // Import mapping modal state
-  const [showImportMappingModal, setShowImportMappingModal] = useState(false);
   const [importSheetMappings, setImportSheetMappings] = useState<{sheet: string; classId: string; className: string; rowCount: number}[]>([]);
+  const [importMappingsReady, setImportMappingsReady] = useState(false);
+  const [importMappingFilter, setImportMappingFilter] = useState<"all" | "unmapped">("unmapped");
+  const [importMappingQuery, setImportMappingQuery] = useState("");
 
   // Image preview URLs
   const registerPreviewUrl = useMemo(
@@ -474,6 +471,7 @@ function App() {
     event.preventDefault();
     setRegisterError(null);
     setRegisterResult(null);
+    setProvError(null);
     if (!registerFile) {
       setRegisterError("Face image is required.");
       return;
@@ -489,9 +487,13 @@ function App() {
         {
           parentName: registerParentName.trim() || undefined,
           parentPhone: registerParentPhone.trim() || undefined,
+          classId: registerClass || undefined,
         },
       );
       setRegisterResult(result);
+      if (result.provisioningId) {
+        setProvisioningId(result.provisioningId);
+      }
       setRegisterName("");
       setRegisterClass("");
       setRegisterParentName("");
@@ -702,6 +704,7 @@ function App() {
 	      const rows = await parseExcelFile(file);
 	      console.log(`[Import] Parsed ${rows.length} rows`);
 	      setImportData(rows);
+          buildImportMappings(rows);
 	    } catch (err) {
 	      console.error(`[Import] Parse error:`, err);
 	      addToast("Failed to parse Excel file", "error");
@@ -718,8 +721,41 @@ function App() {
     }
   };
 
+  const buildImportMappings = (rows: ExcelRow[]) => {
+    const classCounts = new Map<string, number>();
+    rows.forEach((row) => {
+      if (!row.className) return;
+      const key = row.className.trim();
+      if (!key) return;
+      classCounts.set(key, (classCounts.get(key) || 0) + 1);
+    });
+
+    const classIdByName = new Map(
+      availableClasses.map((cls) => [cls.name.toLowerCase(), cls.id]),
+    );
+
+    const mappings = Array.from(classCounts.entries()).map(([sheet, rowCount]) => {
+      const matchedId = classIdByName.get(sheet.toLowerCase()) || "";
+      const matchedName =
+        availableClasses.find((c) => c.id === matchedId)?.name || "";
+      return {
+        sheet,
+        classId: matchedId,
+        className: matchedName,
+        rowCount,
+      };
+    });
+
+    setImportSheetMappings(mappings);
+    setImportMappingsReady(mappings.length > 0 && mappings.every((m) => m.classId));
+  };
+
   const startBatchImport = async () => {
     if (importData.length === 0) return;
+    if (!importMappingsReady) {
+      addToast("Sinf moslashni to'liq belgilang", "error");
+      return;
+    }
     
     setIsImporting(true);
     setImportProgress(0);
@@ -729,6 +765,10 @@ function App() {
     let successCount = 0;
     let errorCount = 0;
     
+    const classIdByName = new Map(
+      importSheetMappings.map((m) => [m.sheet.toLowerCase(), m.classId]),
+    );
+
     for (let i = 0; i < updatedData.length; i++) {
       const row = updatedData[i];
       console.log(`[Import] Processing ${i+1}/${updatedData.length}: ${row.name}`);
@@ -747,9 +787,17 @@ function App() {
         
         // Register with face image if available
         console.log(`[Import] Calling registerStudent: name="${row.name}", gender="${row.gender}", hasImage=${!!imageBase64}`);
+        const classId = row.className
+          ? classIdByName.get(row.className.toLowerCase())
+          : undefined;
+        if (row.className && !classId) {
+          throw new Error(`Class mapping missing: ${row.className}`);
+        }
+
         await registerStudent(row.name, row.gender, imageBase64, {
           parentName: row.parentName,
           parentPhone: row.parentPhone,
+          classId,
         });
         console.log(`[Import] Success: ${row.name}`);
         updatedData[i] = { ...row, status: "success" };
@@ -778,6 +826,8 @@ function App() {
     setImportData([]);
     setImportProgress(0);
     setImportTotal(0);
+    setImportSheetMappings([]);
+    setImportMappingsReady(false);
   };
 
   // Open template modal and load classes for selected school
@@ -835,6 +885,45 @@ function App() {
 
   const deselectAllTemplateClasses = () => {
     setTemplateSelectedClasses([]);
+  };
+
+  const updateImportMapping = (sheet: string, classId: string) => {
+    const className = availableClasses.find((c) => c.id === classId)?.name || "";
+    const updated = importSheetMappings.map((m) =>
+      m.sheet === sheet ? { ...m, classId, className } : m,
+    );
+    setImportSheetMappings(updated);
+    setImportMappingsReady(updated.length > 0 && updated.every((m) => m.classId));
+  };
+
+  const applyImportMappings = () => {
+    const classIdBySheet = new Map(
+      importSheetMappings.map((m) => [m.sheet.toLowerCase(), m.classId]),
+    );
+    const updatedRows = importData.map((row) => ({
+      ...row,
+      classId: row.className
+        ? classIdBySheet.get(row.className.toLowerCase())
+        : undefined,
+    }));
+    setImportData(updatedRows);
+    setImportMappingFilter("unmapped");
+    setImportMappingQuery("");
+  };
+
+  const autoMatchImportMappings = () => {
+    const classIdByName = new Map(
+      availableClasses.map((cls) => [cls.name.toLowerCase(), cls.id]),
+    );
+    const updated = importSheetMappings.map((m) => {
+      if (m.classId) return m;
+      const matchedId = classIdByName.get(m.sheet.toLowerCase()) || "";
+      const matchedName =
+        availableClasses.find((c) => c.id === matchedId)?.name || "";
+      return { ...m, classId: matchedId, className: matchedName };
+    });
+    setImportSheetMappings(updated);
+    setImportMappingsReady(updated.length > 0 && updated.every((m) => m.classId));
   };
 
 
@@ -976,15 +1065,62 @@ function App() {
     }
 
     // Generate and download
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "students_template.xlsx";
-    a.click();
-    URL.revokeObjectURL(url);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "students_template.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+  const fetchProvisioning = useCallback(async () => {
+    if (!provisioningId) return;
+    setProvLoading(true);
+    setProvError(null);
+    try {
+      const data = await getProvisioning(provisioningId);
+      setProvisioning(data);
+    } catch (err) {
+      setProvError(String(err));
+    } finally {
+      setProvLoading(false);
+    }
+  }, [provisioningId]);
+
+  const retryFailed = async () => {
+    if (!provisioningId || !provisioning?.devices) return;
+    const failed = provisioning.devices
+      .filter((d) => d.status === "FAILED")
+      .map((d) => d.deviceId);
+    if (failed.length === 0) {
+      addToast("No failed devices to retry", "error");
+      return;
+    }
+    try {
+      await retryProvisioning(provisioningId, failed);
+      addToast("Retry requested", "success");
+      fetchProvisioning();
+    } catch (err) {
+      addToast(`Retry failed: ${String(err)}`, "error");
+    }
   };
+
+  useEffect(() => {
+    if (provisioningId) fetchProvisioning();
+  }, [provisioningId, fetchProvisioning]);
+
+  const provisioningSummary = useMemo(() => {
+    if (!provisioning?.devices) return null;
+    const total = provisioning.devices.length;
+    const success = provisioning.devices.filter((d) => d.status === "SUCCESS")
+      .length;
+    const failed = provisioning.devices.filter((d) => d.status === "FAILED")
+      .length;
+    const pending = total - success - failed;
+    return { total, success, failed, pending };
+  }, [provisioning]);
 
   return (
     <div className="app">
@@ -1194,6 +1330,69 @@ function App() {
               </div>
             </div>
           )}
+          {provisioningId && (
+            <div className="notice">
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <strong>Provisioning:</strong> {provisioningId}
+                </div>
+                <div>
+                  <strong>Status:</strong>{" "}
+                  {provisioning?.status || (provLoading ? "Loading..." : "Unknown")}
+                </div>
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={fetchProvisioning}
+                  disabled={provLoading}
+                >
+                  <Icons.Refresh />
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={retryFailed}
+                  disabled={provLoading || !provisioningSummary?.failed}
+                >
+                  <Icons.Refresh />
+                  Retry Failed
+                </button>
+              </div>
+
+              {provError && <p className="notice error" style={{ marginTop: 8 }}>{provError}</p>}
+
+              {provisioningSummary && (
+                <div style={{ marginTop: 8, fontSize: 13, color: "var(--neutral-600)" }}>
+                  Total: {provisioningSummary.total} | Success: {provisioningSummary.success} | Failed:{" "}
+                  {provisioningSummary.failed} | Pending: {provisioningSummary.pending}
+                </div>
+              )}
+
+              {provisioning?.devices && provisioning.devices.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Device</th>
+                        <th>Status</th>
+                        <th>Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {provisioning.devices.map((link) => (
+                        <tr key={link.id}>
+                          <td>{link.device?.name || link.deviceId}</td>
+                          <td>{link.status}</td>
+                          <td>{link.lastError || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
           <form onSubmit={handleRegisterSubmit} className="device-form">
             <div className="form-group">
               <label className="label">Student Name</label>
@@ -1226,9 +1425,10 @@ function App() {
                 value={registerClass}
                 onChange={(event) => setRegisterClass(event.target.value)}
               >
-                {classes.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
+                <option value="">Select Class</option>
+                {availableClasses.map((cls) => (
+                  <option key={cls.id} value={cls.id}>
+                    {cls.name}
                   </option>
                 ))}
               </select>
@@ -1495,10 +1695,93 @@ function App() {
                     </div>
                   )}
 
-                  {importData.length > 0 && (
-                    <>
-                      <div className="import-preview">
-                        <table className="table">
+              {importData.length > 0 && (
+                <>
+                  <div style={{ marginTop: "12px" }}>
+                    <div style={{ fontWeight: 600, marginBottom: "8px" }}>Sinf Moslash</div>
+                    <div className="row" style={{ marginBottom: "12px" }}>
+                      <input
+                        className="input"
+                        placeholder="Sheet nomini qidiring..."
+                        value={importMappingQuery}
+                        onChange={(e) => setImportMappingQuery(e.target.value)}
+                      />
+                      <select
+                        className="select"
+                        value={importMappingFilter}
+                        onChange={(e) => setImportMappingFilter(e.target.value as "all" | "unmapped")}
+                        style={{ maxWidth: "180px" }}
+                      >
+                        <option value="unmapped">Faqat moslanmaganlar</option>
+                        <option value="all">Barchasi</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="button secondary"
+                        onClick={autoMatchImportMappings}
+                        disabled={availableClasses.length === 0}
+                      >
+                        Avto-moslash
+                      </button>
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={applyImportMappings}
+                        disabled={!importMappingsReady}
+                      >
+                        Moslashni saqlash
+                      </button>
+                    </div>
+                    {importSheetMappings.length === 0 ? (
+                      <div style={{ color: "var(--neutral-500)" }}>
+                        Sinf moslash topilmadi.
+                      </div>
+                    ) : (
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Sheet</th>
+                            <th>Qatorlar</th>
+                            <th>Sinf</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importSheetMappings
+                            .filter((m) =>
+                              importMappingFilter === "unmapped" ? !m.classId : true,
+                            )
+                            .filter((m) =>
+                              importMappingQuery.trim()
+                                ? m.sheet.toLowerCase().includes(importMappingQuery.toLowerCase())
+                                : true,
+                            )
+                            .map((m) => (
+                              <tr key={m.sheet}>
+                                <td>{m.sheet}</td>
+                                <td>{m.rowCount}</td>
+                                <td>
+                                  <select
+                                    className="select"
+                                    value={m.classId}
+                                    onChange={(e) => updateImportMapping(m.sheet, e.target.value)}
+                                  >
+                                    <option value="">Sinf tanlang</option>
+                                    {availableClasses.map((cls) => (
+                                      <option key={cls.id} value={cls.id}>
+                                        {cls.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  <div className="import-preview">
+                    <table className="table">
                           <thead>
                             <tr>
                               <th>Image</th>

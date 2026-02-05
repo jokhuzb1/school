@@ -21,7 +21,7 @@ impl ApiClient {
 
     fn apply_auth(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         if let Some(token) = &self.token {
-            return builder.header("x-provisioning-token", token);
+            return builder.header("Authorization", format!("Bearer {}", token));
         }
         builder
     }
@@ -85,6 +85,7 @@ impl ApiClient {
         school_id: &str,
         name: &str,
         device_student_id: Option<&str>,
+        class_id: Option<&str>,
         parent_name: Option<&str>,
         parent_phone: Option<&str>,
         request_id: &str,
@@ -94,6 +95,7 @@ impl ApiClient {
             "student": {
                 "name": name,
                 "deviceStudentId": device_student_id,
+                "classId": class_id,
                 "parentName": parent_name,
                 "parentPhone": parent_phone
             },
@@ -162,6 +164,51 @@ impl ApiClient {
             return Err(text);
         }
         Ok(())
+    }
+
+    pub async fn get_provisioning(
+        &self,
+        provisioning_id: &str,
+    ) -> Result<serde_json::Value, String> {
+        let url = format!("{}/provisioning/{}", self.base_url, provisioning_id);
+        let res = self
+            .apply_auth(self.client.get(&url))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(text);
+        }
+        serde_json::from_str(&text).map_err(|e| e.to_string())
+    }
+
+    pub async fn retry_provisioning(
+        &self,
+        provisioning_id: &str,
+        device_ids: Vec<String>,
+    ) -> Result<serde_json::Value, String> {
+        let url = format!("{}/provisioning/{}/retry", self.base_url, provisioning_id);
+        let payload = json!({
+            "deviceIds": device_ids
+        });
+        let res = self
+            .apply_auth(
+                self.client
+                    .post(&url)
+                    .header("Content-Type", "application/json")
+                    .body(payload.to_string()),
+            )
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(text);
+        }
+        serde_json::from_str(&text).map_err(|e| e.to_string())
     }
 
 }
