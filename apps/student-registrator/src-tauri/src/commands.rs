@@ -2,7 +2,7 @@
 
 use crate::hikvision::HikvisionClient;
 use crate::storage::{get_device_by_id, load_devices, save_devices};
-use crate::types::{DeviceConfig, RegisterDeviceResult, RegisterResult, UserInfoSearchResponse};
+use crate::types::{DeviceConfig, DeviceConnectionResult, RegisterDeviceResult, RegisterResult, UserInfoSearchResponse};
 use crate::api::ApiClient;
 use chrono::{Datelike, Local, Timelike};
 use uuid::Uuid;
@@ -108,14 +108,27 @@ pub async fn delete_device(id: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn test_device_connection(device_id: String) -> Result<bool, String> {
-    let device = get_device_by_id(&device_id)
+pub async fn test_device_connection(device_id: String) -> Result<DeviceConnectionResult, String> {
+    let mut devices = load_devices();
+    let index = devices
+        .iter()
+        .position(|d| d.id == device_id)
         .ok_or("Device not found")?;
-    
+
+    let device = devices[index].clone();
     let client = HikvisionClient::new(device);
     let result = client.test_connection().await;
-    
-    Ok(result.ok)
+
+    if result.ok {
+        if let Some(found_id) = result.device_id.clone() {
+            if devices[index].device_id.as_deref() != Some(found_id.as_str()) {
+                devices[index].device_id = Some(found_id);
+                let _ = save_devices(&devices);
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 // ============ Student Registration Commands ============
@@ -128,6 +141,7 @@ pub async fn register_student(
     parent_name: Option<String>,
     parent_phone: Option<String>,
     class_id: Option<String>,
+    target_device_ids: Option<Vec<String>>,
     backend_url: Option<String>,
     backend_token: Option<String>,
     school_id: Option<String>,
@@ -170,6 +184,7 @@ pub async fn register_student(
                 class_id.as_deref(), // classId - to'g'ri o'rinda!
                 parent_name.as_deref(),
                 parent_phone.as_deref(),
+                target_device_ids.as_deref(),
                 &request_id,
             )
             .await

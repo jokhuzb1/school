@@ -9,8 +9,8 @@ interface UseStudentTableReturn {
   deleteStudent: (id: string) => void;
   importStudents: (rows: Omit<StudentRow, 'id' | 'source' | 'status'>[]) => void;
   applyClassMapping: (className: string, classId: string, classDisplayName?: string) => void;
-  saveStudent: (id: string) => Promise<void>;
-  saveAllPending: () => Promise<{ successCount: number; errorCount: number }>;
+  saveStudent: (id: string, targetDeviceIds?: string[]) => Promise<void>;
+  saveAllPending: (targetDeviceIds?: string[]) => Promise<{ successCount: number; errorCount: number }>;
   clearTable: () => void;
   isSaving: boolean;
   lastRegisterResult: RegisterResult | null;
@@ -78,7 +78,7 @@ export function useStudentTable(): UseStudentTableReturn {
   );
 
   // Bitta studentni saqlash
-  const saveStudent = useCallback(async (id: string) => {
+  const saveStudent = useCallback(async (id: string, targetDeviceIds?: string[]) => {
     const student = students.find(s => s.id === id);
     if (!student) return;
 
@@ -127,6 +127,7 @@ export function useStudentTable(): UseStudentTableReturn {
           parentName: student.parentName,
           parentPhone: student.parentPhone,
           classId: student.classId,
+          targetDeviceIds: targetDeviceIds && targetDeviceIds.length > 0 ? targetDeviceIds : undefined,
         }
       );
 
@@ -190,7 +191,7 @@ export function useStudentTable(): UseStudentTableReturn {
   }, [students]);
 
   // Barcha pending larni saqlash
-  const saveAllPending = useCallback(async () => {
+  const saveAllPending = useCallback(async (targetDeviceIds?: string[]) => {
     const pending = students.filter(s => s.status === 'pending');
     if (pending.length === 0) {
       return { successCount: 0, errorCount: 0 };
@@ -203,7 +204,7 @@ export function useStudentTable(): UseStudentTableReturn {
     
     for (const student of pending) {
       try {
-        await saveStudent(student.id);
+        await saveStudent(student.id, targetDeviceIds);
         successCount++;
       } catch (err) {
         errorCount++;

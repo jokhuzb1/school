@@ -88,9 +88,11 @@ impl ApiClient {
         class_id: Option<&str>,
         parent_name: Option<&str>,
         parent_phone: Option<&str>,
+        target_device_ids: Option<&[String]>,
         request_id: &str,
     ) -> Result<ProvisioningStartResponse, String> {
         let url = format!("{}/schools/{}/students/provision", self.base_url, school_id);
+        let target_device_ids = target_device_ids.unwrap_or(&[]).to_vec();
         let payload = json!({
             "student": {
                 "name": name,
@@ -100,7 +102,8 @@ impl ApiClient {
                 "parentPhone": parent_phone
             },
             "requestId": request_id,
-            "targetAllActive": true
+            "targetAllActive": target_device_ids.is_empty(),
+            "targetDeviceIds": target_device_ids
         });
 
         let res = self

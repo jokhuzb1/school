@@ -5,6 +5,7 @@ export * from './ui.types';
 // Re-export API types
 export type {
   DeviceConfig,
+  DeviceConnectionResult,
   RegisterResult,
   ProvisioningDetails,
   ProvisioningDeviceLink,
@@ -13,5 +14,6 @@ export type {
   AuthUser,
   SchoolInfo,
   ClassInfo,
+  SchoolDeviceInfo,
   RecreateUserResult,
 } from '../api';

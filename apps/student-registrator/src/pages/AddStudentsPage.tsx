@@ -1,5 +1,12 @@
-import { useState, useEffect } from 'react';
-import { fetchSchools, fetchClasses, getAuthUser } from '../api';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  fetchSchools,
+  fetchClasses,
+  fetchSchoolDevices,
+  fetchDevices,
+  testDeviceConnection,
+  getAuthUser,
+} from '../api';
 import { useStudentTable } from '../hooks/useStudentTable';
 import { useExcelImport } from '../hooks/useExcelImport';
 import { useGlobalToast } from '../hooks/useToast';
@@ -7,13 +14,20 @@ import { StudentTable } from '../components/students/StudentTable';
 import { ExcelImportButton } from '../components/students/ExcelImportButton';
 import { ImportMappingPanel } from '../components/students/ImportMappingPanel';
 import { ProvisioningPanel } from '../components/students/ProvisioningPanel';
+import { DeviceTargetsPanel, type DeviceStatus } from '../components/students/DeviceTargetsPanel';
 import { downloadStudentsTemplate } from '../services/excel.service';
 import { Icons } from '../components/ui/Icons';
-import type { ClassInfo } from '../types';
+import type { ClassInfo, DeviceConfig, DeviceConnectionResult, SchoolDeviceInfo } from '../types';
 
 export function AddStudentsPage() {
   const [availableClasses, setAvailableClasses] = useState<ClassInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  const [backendDevices, setBackendDevices] = useState<SchoolDeviceInfo[]>([]);
+  const [, setLocalDevices] = useState<DeviceConfig[]>([]);
+  const [deviceStatus, setDeviceStatus] = useState<Record<string, DeviceStatus>>({});
+  const [deviceStatusLoading, setDeviceStatusLoading] = useState(false);
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
+  const [deviceSelectionTouched, setDeviceSelectionTouched] = useState(false);
 
   const {
     students,
@@ -31,6 +45,70 @@ export function AddStudentsPage() {
   const { parseExcel, resizeImages } = useExcelImport();
   const { addToast } = useGlobalToast();
 
+  const refreshDeviceStatuses = useCallback(async (
+    backendList: SchoolDeviceInfo[],
+    localList?: DeviceConfig[],
+  ) => {
+    const backend = backendList;
+    if (backend.length === 0) {
+      setDeviceStatus({});
+      return;
+    }
+
+    setDeviceStatusLoading(true);
+    try {
+      const local = localList ?? await fetchDevices();
+      if (!localList) setLocalDevices(local);
+
+      const results = await Promise.all(
+        local.map(async (device) => {
+          try {
+            const result = await testDeviceConnection(device.id);
+            return { device, result };
+          } catch (err) {
+            const fallback: DeviceConnectionResult = { ok: false };
+            return { device, result: fallback };
+          }
+        }),
+      );
+
+      const statusByExternalId = new Map<string, DeviceStatus>();
+      results.forEach(({ device, result }) => {
+        const externalId = result.deviceId || device.deviceId;
+        if (!externalId) return;
+        statusByExternalId.set(externalId, result.ok ? 'online' : 'offline');
+      });
+
+      const nextStatus: Record<string, DeviceStatus> = {};
+      backend.forEach((device) => {
+        if (device.deviceId && statusByExternalId.has(device.deviceId)) {
+          nextStatus[device.id] = statusByExternalId.get(device.deviceId) || 'offline';
+        } else {
+          nextStatus[device.id] = local.length === 0 ? 'unknown' : 'offline';
+        }
+      });
+
+      setDeviceStatus(nextStatus);
+    } catch (err) {
+      console.error('Failed to refresh device status:', err);
+      addToast('Qurilma holatini tekshirishda xato', 'error');
+    } finally {
+      setDeviceStatusLoading(false);
+    }
+  }, [addToast]);
+
+  const handleToggleDevice = (deviceId: string) => {
+    setDeviceSelectionTouched(true);
+    setSelectedDeviceIds((prev) =>
+      prev.includes(deviceId) ? prev.filter((id) => id !== deviceId) : [...prev, deviceId],
+    );
+  };
+
+  const handleToggleAllDevices = (next: boolean) => {
+    setDeviceSelectionTouched(true);
+    setSelectedDeviceIds(next ? backendDevices.map((d) => d.id) : []);
+  };
+
   // Load school and classes
   useEffect(() => {
     const loadData = async () => {
@@ -42,9 +120,16 @@ export function AddStudentsPage() {
         const schoolId = user.schoolId || schools[0]?.id;
         
         if (schoolId) {
-          const classes = await fetchClasses(schoolId);
+          const [classes, devices, local] = await Promise.all([
+            fetchClasses(schoolId),
+            fetchSchoolDevices(schoolId),
+            fetchDevices(),
+          ]);
           console.log('[AddStudents] Loaded classes from backend:', classes);
           setAvailableClasses(classes);
+          setBackendDevices(devices);
+          setLocalDevices(local);
+          await refreshDeviceStatuses(devices, local);
         }
       } catch (err) {
         console.error('Failed to load data:', err);
@@ -53,7 +138,13 @@ export function AddStudentsPage() {
     };
 
     loadData();
-  }, [addToast]);
+  }, [addToast, refreshDeviceStatuses]);
+
+  useEffect(() => {
+    if (!deviceSelectionTouched) {
+      setSelectedDeviceIds(backendDevices.map((d) => d.id));
+    }
+  }, [backendDevices, deviceSelectionTouched]);
 
   // Handle Excel import
   const handleExcelImport = async (file: File) => {
@@ -102,8 +193,12 @@ export function AddStudentsPage() {
 
   // Handle save student
   const handleSaveStudent = async (id: string) => {
+    if (selectedDeviceIds.length === 0) {
+      addToast('Qurilma tanlanmagan', 'error');
+      return;
+    }
     try {
-      await saveStudent(id);
+      await saveStudent(id, selectedDeviceIds);
       addToast('O\'quvchi saqlandi', 'success');
     } catch (err: any) {
       // Check if it's validation error
@@ -114,6 +209,10 @@ export function AddStudentsPage() {
 
   // Handle save all
   const handleSaveAll = async () => {
+    if (selectedDeviceIds.length === 0) {
+      addToast('Qurilma tanlanmagan', 'error');
+      return;
+    }
     const pendingCount = students.filter(s => s.status === 'pending').length;
     if (pendingCount === 0) {
       addToast('Saqlanishi kerak bo\'lgan o\'quvchilar yo\'q', 'error');
@@ -121,7 +220,7 @@ export function AddStudentsPage() {
     }
 
     try {
-      const { successCount, errorCount } = await saveAllPending();
+      const { successCount, errorCount } = await saveAllPending(selectedDeviceIds);
       if (errorCount > 0) {
         addToast(`${errorCount} ta xato, ${successCount} ta saqlandi`, 'error');
         return;
@@ -215,6 +314,16 @@ export function AddStudentsPage() {
           )}
         </div>
       )}
+
+      <DeviceTargetsPanel
+        devices={backendDevices}
+        selectedIds={selectedDeviceIds}
+        statusById={deviceStatus}
+        onToggle={handleToggleDevice}
+        onToggleAll={handleToggleAllDevices}
+        onRefresh={() => refreshDeviceStatuses(backendDevices)}
+        refreshing={deviceStatusLoading}
+      />
 
       <ImportMappingPanel
         students={students}

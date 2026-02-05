@@ -88,7 +88,8 @@ export function DevicesPage() {
   const handleTestConnection = async (device: DeviceConfig) => {
     setTestingId(device.id);
     try {
-      const ok = await testDeviceConnection(device.id);
+      const result = await testDeviceConnection(device.id);
+      const ok = result.ok;
       setTestStatus((prev) => ({ ...prev, [device.id]: ok ? 'ok' : 'fail' }));
       addToast(ok ? 'Ulanish muvaffaqiyatli' : 'Ulanish muvaffaqiyatsiz', ok ? 'success' : 'error');
     } catch (err) {

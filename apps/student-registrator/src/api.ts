@@ -12,6 +12,12 @@ export interface DeviceConfig {
   deviceId?: string;
 }
 
+export interface DeviceConnectionResult {
+  ok: boolean;
+  message?: string;
+  deviceId?: string;
+}
+
 export interface RegisterResult {
   employeeNo: string;
   provisioningId?: string;
@@ -158,6 +164,15 @@ export interface ClassInfo {
   totalStudents?: number;
 }
 
+export interface SchoolDeviceInfo {
+  id: string;
+  name: string;
+  deviceId?: string | null;
+  type?: string | null;
+  location?: string | null;
+  isActive?: boolean | null;
+}
+
 export async function fetchSchools(): Promise<SchoolInfo[]> {
   const user = getAuthUser();
   if (!user) throw new Error('Not authenticated');
@@ -179,6 +194,12 @@ export async function fetchSchools(): Promise<SchoolInfo[]> {
 export async function fetchClasses(schoolId: string): Promise<ClassInfo[]> {
   const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/classes`);
   if (!res.ok) throw new Error('Failed to fetch classes');
+  return res.json();
+}
+
+export async function fetchSchoolDevices(schoolId: string): Promise<SchoolDeviceInfo[]> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/devices`);
+  if (!res.ok) throw new Error('Failed to fetch devices');
   return res.json();
 }
 
@@ -238,8 +259,8 @@ export async function deleteDevice(id: string): Promise<boolean> {
   return invoke<boolean>('delete_device', { id });
 }
 
-export async function testDeviceConnection(deviceId: string): Promise<boolean> {
-  return invoke<boolean>('test_device_connection', { deviceId });
+export async function testDeviceConnection(deviceId: string): Promise<DeviceConnectionResult> {
+  return invoke<DeviceConnectionResult>('test_device_connection', { deviceId });
 }
 
 // ============ Student Registration ============
@@ -248,7 +269,7 @@ export async function registerStudent(
   name: string,
   gender: string,
   faceImageBase64: string,
-  options?: { parentName?: string; parentPhone?: string; classId?: string },
+  options?: { parentName?: string; parentPhone?: string; classId?: string; targetDeviceIds?: string[] },
 ): Promise<RegisterResult> {
   const token = getAuthToken();
   const user = getAuthUser();
@@ -260,6 +281,7 @@ export async function registerStudent(
     parentName: options?.parentName,
     parentPhone: options?.parentPhone,
     classId: options?.classId,
+    targetDeviceIds: options?.targetDeviceIds,
     backendUrl: BACKEND_URL,
     backendToken: token || '',
     schoolId: user?.schoolId || '',
