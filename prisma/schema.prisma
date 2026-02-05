@@ -31,6 +31,7 @@ model School {
   dailyAttendances    DailyAttendance[]
   holidays            Holiday[]
   provisionings       StudentProvisioning[]
+  provisioningLogs    ProvisioningLog[]
 }
 
 model User {
@@ -115,6 +116,7 @@ model Student {
   dailyAttendances   DailyAttendance[]
   provisionings      StudentProvisioning[]
   deviceLinks        StudentDeviceLink[]
+  provisioningLogs   ProvisioningLog[]
 
   @@index([schoolId])
   @@index([schoolId, isActive])
@@ -139,6 +141,7 @@ model Device {
   updatedAt  DateTime @updatedAt
   attendanceEvents AttendanceEvent[]
   studentLinks StudentDeviceLink[]
+  provisioningLogs ProvisioningLog[]
 
   @@index([schoolId])
   @@index([schoolId, isActive])
@@ -183,6 +186,7 @@ model StudentProvisioning {
   student       Student  @relation(fields: [studentId], references: [id])
   school        School   @relation(fields: [schoolId], references: [id])
   devices       StudentDeviceLink[]
+  logs          ProvisioningLog[]
 
   @@index([studentId])
   @@index([schoolId])

@@ -12,6 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
     "db:migrate": "prisma migrate dev --name init",
+    "db:diff": "powershell -ExecutionPolicy Bypass -File scripts/migrate-diff.ps1",
+    "db:deploy": "prisma migrate deploy",
     "db:seed": "ts-node prisma/seed.ts",
     "db:studio": "prisma studio",
     "setup:mtx": "ts-node scripts/setup-mediamtx.ts",

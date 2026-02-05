@@ -88,13 +88,18 @@ export function DeviceTargetsPanel({
                 />
                 <div className="device-target-main">
                   <div className="device-target-name">{device.name}</div>
-                  <div className="device-target-meta">
-                    {device.location && <span className="badge">{device.location}</span>}
-                    {device.deviceId && <span className="badge">ID: {device.deviceId}</span>}
-                    {device.isActive === false && (
-                      <span className="badge badge-warning">Backend: nofaol</span>
-                    )}
-                  </div>
+                <div className="device-target-meta">
+                  {device.location && <span className="badge">{device.location}</span>}
+                  {device.deviceId && <span className="badge">ID: {device.deviceId}</span>}
+                  {device.lastSeenAt && (
+                    <span className="badge">
+                      Oxirgi ko'rilgan: {new Date(device.lastSeenAt).toLocaleString()}
+                    </span>
+                  )}
+                  {device.isActive === false && (
+                    <span className="badge badge-warning">Backend: nofaol</span>
+                  )}
+                </div>
                 </div>
                 <span
                   className={`badge ${

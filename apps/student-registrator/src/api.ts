@@ -185,6 +185,7 @@ export interface SchoolDeviceInfo {
   type?: string | null;
   location?: string | null;
   isActive?: boolean | null;
+  lastSeenAt?: string | null;
 }
 
 export async function fetchSchools(): Promise<SchoolInfo[]> {
@@ -214,6 +215,36 @@ export async function fetchClasses(schoolId: string): Promise<ClassInfo[]> {
 export async function fetchSchoolDevices(schoolId: string): Promise<SchoolDeviceInfo[]> {
   const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/devices`);
   if (!res.ok) throw new Error('Failed to fetch devices');
+  return res.json();
+}
+
+export async function createSchoolDevice(
+  schoolId: string,
+  payload: { name: string; deviceId: string; type?: string; location?: string },
+): Promise<SchoolDeviceInfo> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/devices`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || 'Failed to create backend device');
+  }
+  return res.json();
+}
+
+export async function updateSchoolDevice(
+  id: string,
+  payload: Partial<Pick<SchoolDeviceInfo, 'name' | 'deviceId' | 'type' | 'location' | 'isActive' | 'lastSeenAt'>>,
+): Promise<SchoolDeviceInfo> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/devices/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || 'Failed to update backend device');
+  }
   return res.json();
 }
 
