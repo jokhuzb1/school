@@ -7,7 +7,6 @@ use crate::api::ApiClient;
 use chrono::{Datelike, Local, Timelike};
 use uuid::Uuid;
 use std::collections::HashMap;
-use serde_json::Value;
 
 const MAX_FACE_IMAGE_BYTES: usize = 200 * 1024;
 
@@ -125,11 +124,11 @@ pub async fn register_student(
     name: String,
     gender: String,
     face_image_base64: String,
-    parentName: Option<String>,
-    parentPhone: Option<String>,
-    backendUrl: Option<String>,
-    backendToken: Option<String>,
-    schoolId: Option<String>,
+    parent_name: Option<String>,
+    parent_phone: Option<String>,
+    backend_url: Option<String>,
+    backend_token: Option<String>,
+    school_id: Option<String>,
 ) -> Result<RegisterResult, String> {
     // Quick size guard: base64 expands data by ~33%, so this is conservative.
     if face_image_base64.len() > (MAX_FACE_IMAGE_BYTES * 4 / 3) + 256 {
@@ -145,9 +144,9 @@ pub async fn register_student(
         return Err("No devices configured".to_string());
     }
 
-    let backend_url = backendUrl.filter(|v| !v.trim().is_empty());
-    let backend_token = backendToken.filter(|v| !v.trim().is_empty());
-    let school_id = schoolId.filter(|v| !v.trim().is_empty());
+    let backend_url = backend_url.filter(|v| !v.trim().is_empty());
+    let backend_token = backend_token.filter(|v| !v.trim().is_empty());
+    let school_id = school_id.filter(|v| !v.trim().is_empty());
 
     let mut employee_no = generate_employee_no();
     let mut provisioning_id: Option<String> = None;
@@ -166,8 +165,8 @@ pub async fn register_student(
                 &school_id,
                 &name,
                 None,
-                parentName.as_deref(),
-                parentPhone.as_deref(),
+                parent_name.as_deref(),
+                parent_phone.as_deref(),
                 &request_id,
             )
             .await
@@ -243,8 +242,8 @@ pub async fn register_student(
                     .await;
             }
             results.push(RegisterDeviceResult {
-                device_id: device.id,
-                device_name: device.name,
+                device_id: device.id.clone(),
+                device_name: device.name.clone(),
                 connection,
                 user_create: None,
                 face_upload: None,
@@ -278,8 +277,8 @@ pub async fn register_student(
                     .await;
             }
             results.push(RegisterDeviceResult {
-                device_id: device.id,
-                device_name: device.name,
+                device_id: device.id.clone(),
+                device_name: device.name.clone(),
                 connection,
                 user_create: Some(user_create),
                 face_upload: None,
@@ -313,8 +312,8 @@ pub async fn register_student(
         }
 
         results.push(RegisterDeviceResult {
-            device_id: device.id,
-            device_name: device.name,
+            device_id: device.id.clone(),
+            device_name: device.name.clone(),
             connection,
             user_create: Some(user_create),
             face_upload: Some(face_upload),
@@ -467,33 +466,3 @@ pub async fn recreate_user(
     }))
 }
 
-// ============ Provisioning Commands ============
-
-#[tauri::command]
-pub async fn get_provisioning(
-    provisioning_id: String,
-    backend_url: Option<String>,
-    backend_token: Option<String>,
-) -> Result<Value, String> {
-    let backend_url = backend_url.filter(|v| !v.trim().is_empty())
-        .ok_or("backendUrl is required")?;
-    let backend_token = backend_token.filter(|v| !v.trim().is_empty());
-    let client = ApiClient::new(backend_url, backend_token);
-    client.get_provisioning(&provisioning_id).await
-}
-
-#[tauri::command]
-pub async fn retry_provisioning(
-    provisioning_id: String,
-    backend_url: Option<String>,
-    backend_token: Option<String>,
-    device_ids: Option<Vec<String>>,
-) -> Result<Value, String> {
-    let backend_url = backend_url.filter(|v| !v.trim().is_empty())
-        .ok_or("backendUrl is required")?;
-    let backend_token = backend_token.filter(|v| !v.trim().is_empty());
-    let client = ApiClient::new(backend_url, backend_token);
-    client
-        .retry_provisioning(&provisioning_id, device_ids.unwrap_or_default())
-        .await
-}

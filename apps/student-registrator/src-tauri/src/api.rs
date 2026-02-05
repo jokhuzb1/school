@@ -156,53 +156,12 @@ impl ApiClient {
             .await
             .map_err(|e| e.to_string())?;
 
-        if !res.status().is_success() {
+        let status = res.status();
+        if !status.is_success() {
             let text = res.text().await.unwrap_or_default();
             return Err(text);
         }
         Ok(())
     }
 
-    pub async fn get_provisioning(
-        &self,
-        provisioning_id: &str,
-    ) -> Result<serde_json::Value, String> {
-        let url = format!("{}/provisioning/{}", self.base_url, provisioning_id);
-        let res = self
-            .apply_auth(self.client.get(&url))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        let text = res.text().await.unwrap_or_default();
-        if !res.status().is_success() {
-            return Err(text);
-        }
-        serde_json::from_str(&text).map_err(|e| e.to_string())
-    }
-
-    pub async fn retry_provisioning(
-        &self,
-        provisioning_id: &str,
-        device_ids: Vec<String>,
-    ) -> Result<serde_json::Value, String> {
-        let url = format!("{}/provisioning/{}/retry", self.base_url, provisioning_id);
-        let payload = json!({
-            "deviceIds": device_ids
-        });
-        let res = self
-            .apply_auth(
-                self.client
-                    .post(&url)
-                    .header("Content-Type", "application/json")
-                    .body(payload.to_string()),
-            )
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        let text = res.text().await.unwrap_or_default();
-        if !res.status().is_success() {
-            return Err(text);
-        }
-        serde_json::from_str(&text).map_err(|e| e.to_string())
-    }
 }

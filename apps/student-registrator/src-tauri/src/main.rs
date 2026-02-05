@@ -23,9 +23,6 @@ fn main() {
             fetch_users,
             delete_user,
             recreate_user,
-            // Provisioning
-            get_provisioning,
-            retry_provisioning,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

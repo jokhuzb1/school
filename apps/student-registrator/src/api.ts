@@ -24,29 +24,6 @@ export interface RegisterResult {
   }>;
 }
 
-export interface ProvisioningDeviceLink {
-  id: string;
-  status: "PENDING" | "SUCCESS" | "FAILED";
-  deviceId: string;
-  employeeNoOnDevice?: string | null;
-  lastError?: string | null;
-  device?: {
-    id: string;
-    deviceId: string;
-    name: string;
-    location?: string | null;
-    isActive?: boolean;
-  };
-}
-
-export interface ProvisioningDetails {
-  id: string;
-  status: "PENDING" | "PROCESSING" | "PARTIAL" | "CONFIRMED" | "FAILED";
-  studentId: string;
-  schoolId: string;
-  lastError?: string | null;
-  devices?: ProvisioningDeviceLink[];
-}
 
 export interface UserInfoEntry {
   employeeNo: string;
@@ -182,6 +159,19 @@ export async function fetchClasses(schoolId: string): Promise<ClassInfo[]> {
   return res.json();
 }
 
+export async function createClass(schoolId: string, name: string, gradeLevel: number): Promise<ClassInfo> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/classes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, gradeLevel }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || 'Failed to create class');
+  }
+  return res.json();
+}
+
 // ============ Device Management ============
 
 export async function fetchDevices(): Promise<DeviceConfig[]> {
@@ -302,30 +292,6 @@ export async function fileToBase64(file: File): Promise<string> {
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
-  });
-}
-
-// ============ Provisioning ============
-
-export async function getProvisioning(
-  provisioningId: string,
-): Promise<ProvisioningDetails> {
-  return invoke<ProvisioningDetails>('get_provisioning', {
-    provisioningId,
-    backendUrl: BACKEND_URL,
-    backendToken: BACKEND_TOKEN,
-  });
-}
-
-export async function retryProvisioning(
-  provisioningId: string,
-  deviceIds: string[] = [],
-): Promise<{ ok: boolean; updated?: number }> {
-  return invoke<{ ok: boolean; updated?: number }>('retry_provisioning', {
-    provisioningId,
-    backendUrl: BACKEND_URL,
-    backendToken: BACKEND_TOKEN,
-    deviceIds,
   });
 }
 
