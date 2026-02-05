@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import prisma from "../../../prisma";
 import ExcelJS from "exceljs";
+import { Prisma } from "@prisma/client";
 import {
   addDaysUtc,
   getDateOnlyInZone,
@@ -78,7 +79,7 @@ function computeProvisioningStatus(
 }
 
 async function generateDeviceStudentId(
-  tx: typeof prisma,
+  tx: Prisma.TransactionClient,
   schoolId: string,
 ): Promise<string> {
   const strategy = DEVICE_STUDENT_ID_STRATEGY;
@@ -1244,6 +1245,17 @@ export default async function (fastify: FastifyInstance) {
         });
       }
 
+      if (!device && body.deviceName) {
+        const matches = await prisma.device.findMany({
+          where: { schoolId: provisioning.schoolId, name: body.deviceName },
+        });
+        if (matches.length === 1) {
+          device = matches[0];
+        } else if (matches.length > 1) {
+          return reply.status(400).send({ error: "Multiple devices with same name" });
+        }
+      }
+
       if (!device) {
         return reply.status(404).send({ error: "Device not found" });
       }
@@ -1308,6 +1320,93 @@ export default async function (fastify: FastifyInstance) {
         provisioningStatus: result.provisioning.status,
         deviceStatus: result.link.status,
       };
+    } catch (err) {
+      return sendHttpError(reply, err);
+    }
+  });
+
+  // Retry provisioning (reset failed links to pending)
+  fastify.post("/provisioning/:id/retry", async (request: any, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const body = request.body || {};
+
+      const provisioning = await prisma.studentProvisioning.findUnique({
+        where: { id },
+      });
+      if (!provisioning) {
+        return reply.status(404).send({ error: "Provisioning not found" });
+      }
+
+      const auth = await ensureProvisioningAuth(
+        request,
+        reply,
+        provisioning.schoolId,
+      );
+      if (!auth) return;
+
+      const deviceIds = Array.isArray(body.deviceIds)
+        ? (body.deviceIds as string[])
+        : [];
+      const deviceExternalIds = Array.isArray(body.deviceExternalIds)
+        ? (body.deviceExternalIds as string[])
+        : [];
+
+      const now = new Date();
+      const result = await prisma.$transaction(async (tx) => {
+        let targetDeviceIds: string[] = [];
+        if (deviceIds.length > 0) {
+          targetDeviceIds = deviceIds;
+        } else if (deviceExternalIds.length > 0) {
+          const devices = await tx.device.findMany({
+            where: {
+              schoolId: provisioning.schoolId,
+              deviceId: { in: deviceExternalIds },
+            },
+            select: { id: true },
+          });
+          targetDeviceIds = devices.map((d) => d.id);
+        } else {
+          const links = await tx.studentDeviceLink.findMany({
+            where: { provisioningId: id, status: "FAILED" },
+            select: { deviceId: true },
+          });
+          targetDeviceIds = links.map((l) => l.deviceId);
+        }
+
+        if (targetDeviceIds.length === 0) {
+          return { updated: 0, targetDeviceIds: [] as string[] };
+        }
+
+        const updated = await tx.studentDeviceLink.updateMany({
+          where: {
+            provisioningId: id,
+            deviceId: { in: targetDeviceIds },
+          },
+          data: {
+            status: "PENDING",
+            lastError: null,
+            lastAttemptAt: now,
+          },
+        });
+
+        await tx.studentProvisioning.update({
+          where: { id },
+          data: { status: "PROCESSING", lastError: null },
+        });
+
+        await tx.student.update({
+          where: { id: provisioning.studentId },
+          data: {
+            deviceSyncStatus: "PROCESSING",
+            deviceSyncUpdatedAt: now,
+          },
+        });
+
+        return { updated: updated.count, targetDeviceIds };
+      });
+
+      return { ok: true, ...result };
     } catch (err) {
       return sendHttpError(reply, err);
     }

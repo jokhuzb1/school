@@ -9,10 +9,12 @@ export interface DeviceConfig {
   port: number;
   username: string;
   password: string;
+  deviceId?: string;
 }
 
 export interface RegisterResult {
   employeeNo: string;
+  provisioningId?: string;
   results: Array<{
     deviceId: string;
     deviceName: string;
@@ -20,6 +22,30 @@ export interface RegisterResult {
     userCreate?: { ok: boolean; statusString?: string; errorMsg?: string };
     faceUpload?: { ok: boolean; statusString?: string; errorMsg?: string };
   }>;
+}
+
+export interface ProvisioningDeviceLink {
+  id: string;
+  status: "PENDING" | "SUCCESS" | "FAILED";
+  deviceId: string;
+  employeeNoOnDevice?: string | null;
+  lastError?: string | null;
+  device?: {
+    id: string;
+    deviceId: string;
+    name: string;
+    location?: string | null;
+    isActive?: boolean;
+  };
+}
+
+export interface ProvisioningDetails {
+  id: string;
+  status: "PENDING" | "PROCESSING" | "PARTIAL" | "CONFIRMED" | "FAILED";
+  studentId: string;
+  schoolId: string;
+  lastError?: string | null;
+  devices?: ProvisioningDeviceLink[];
 }
 
 export interface UserInfoEntry {
@@ -276,6 +302,30 @@ export async function fileToBase64(file: File): Promise<string> {
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+// ============ Provisioning ============
+
+export async function getProvisioning(
+  provisioningId: string,
+): Promise<ProvisioningDetails> {
+  return invoke<ProvisioningDetails>('get_provisioning', {
+    provisioningId,
+    backendUrl: BACKEND_URL,
+    backendToken: BACKEND_TOKEN,
+  });
+}
+
+export async function retryProvisioning(
+  provisioningId: string,
+  deviceIds: string[] = [],
+): Promise<{ ok: boolean; updated?: number }> {
+  return invoke<{ ok: boolean; updated?: number }>('retry_provisioning', {
+    provisioningId,
+    backendUrl: BACKEND_URL,
+    backendToken: BACKEND_TOKEN,
+    deviceIds,
   });
 }
 

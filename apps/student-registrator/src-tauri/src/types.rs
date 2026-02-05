@@ -10,6 +10,9 @@ pub struct DeviceConfig {
     pub port: u16,
     pub username: String,
     pub password: String,
+    #[serde(default)]
+    #[serde(rename = "deviceId")]
+    pub device_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +51,8 @@ pub struct RegisterDeviceResult {
 pub struct RegisterResult {
     #[serde(rename = "employeeNo")]
     pub employee_no: String,
+    #[serde(rename = "provisioningId")]
+    pub provisioning_id: Option<String>,
     pub results: Vec<RegisterDeviceResult>,
 }
 

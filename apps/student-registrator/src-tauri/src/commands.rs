@@ -7,6 +7,7 @@ use crate::api::ApiClient;
 use chrono::{Datelike, Local, Timelike};
 use uuid::Uuid;
 use std::collections::HashMap;
+use serde_json::Value;
 
 const MAX_FACE_IMAGE_BYTES: usize = 200 * 1024;
 
@@ -54,6 +55,7 @@ pub async fn create_device(
         port,
         username,
         password,
+        device_id: None,
     };
 
     devices.push(device.clone());
@@ -76,7 +78,15 @@ pub async fn update_device(
     let index = devices.iter().position(|d| d.id == id)
         .ok_or("Device not found")?;
 
-    let device = DeviceConfig { id, name, host, port, username, password };
+    let device = DeviceConfig {
+        id,
+        name,
+        host,
+        port,
+        username,
+        password,
+        device_id: devices[index].device_id.clone(),
+    };
     devices[index] = device.clone();
     save_devices(&devices)?;
     
@@ -129,7 +139,7 @@ pub async fn register_student(
         ));
     }
 
-    let devices = load_devices();
+    let mut devices = load_devices();
     
     if devices.is_empty() {
         return Err("No devices configured".to_string());
@@ -181,19 +191,41 @@ pub async fn register_student(
 
     let mut results = Vec::new();
 
-    for device in devices {
+    let mut devices_changed = false;
+
+    for device in devices.iter_mut() {
         let client = HikvisionClient::new(device.clone());
         
         // Test connection
         let connection = client.test_connection().await;
+        if connection.ok {
+            if let Some(device_id) = connection.device_id.clone() {
+                if device.device_id.as_deref() != Some(device_id.as_str()) {
+                    device.device_id = Some(device_id);
+                    devices_changed = true;
+                }
+            }
+        }
         let backend_device_id = connection
             .device_id
             .as_ref()
             .and_then(|id| backend_device_map.get(id))
             .map(|s| s.as_str());
-        let external_device_id = connection.device_id.as_deref();
+        let external_device_id = connection
+            .device_id
+            .as_deref()
+            .or(device.device_id.as_deref());
         let device_name = Some(device.name.as_str());
         let device_location = Some(device.host.as_str());
+
+        if !backend_device_map.is_empty() {
+            if let Some(external_id) = external_device_id {
+                if !backend_device_map.contains_key(external_id) {
+                    continue;
+                }
+            }
+        }
+
         if !connection.ok {
             if let (Some(api), Some(pid)) = (api_client.as_ref(), provisioning_id.as_ref()) {
                 let _ = api
@@ -289,6 +321,10 @@ pub async fn register_student(
         });
     }
 
+    if devices_changed {
+        let _ = save_devices(&devices);
+    }
+
     // Sync to main backend if URL provided
     if let Some(url) = backend_url {
         let client = api_client.unwrap_or_else(|| ApiClient::new(url, backend_token));
@@ -297,6 +333,7 @@ pub async fn register_student(
 
     Ok(RegisterResult {
         employee_no,
+        provisioning_id,
         results,
     })
 }
@@ -428,4 +465,35 @@ pub async fn recreate_user(
             "errorMsg": face_upload.error_msg
         }
     }))
+}
+
+// ============ Provisioning Commands ============
+
+#[tauri::command]
+pub async fn get_provisioning(
+    provisioning_id: String,
+    backend_url: Option<String>,
+    backend_token: Option<String>,
+) -> Result<Value, String> {
+    let backend_url = backend_url.filter(|v| !v.trim().is_empty())
+        .ok_or("backendUrl is required")?;
+    let backend_token = backend_token.filter(|v| !v.trim().is_empty());
+    let client = ApiClient::new(backend_url, backend_token);
+    client.get_provisioning(&provisioning_id).await
+}
+
+#[tauri::command]
+pub async fn retry_provisioning(
+    provisioning_id: String,
+    backend_url: Option<String>,
+    backend_token: Option<String>,
+    device_ids: Option<Vec<String>>,
+) -> Result<Value, String> {
+    let backend_url = backend_url.filter(|v| !v.trim().is_empty())
+        .ok_or("backendUrl is required")?;
+    let backend_token = backend_token.filter(|v| !v.trim().is_empty());
+    let client = ApiClient::new(backend_url, backend_token);
+    client
+        .retry_provisioning(&provisioning_id, device_ids.unwrap_or_default())
+        .await
 }

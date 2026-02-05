@@ -195,3 +195,4 @@ VITE_BACKEND_URL=http://localhost:3000  # Main backend URL for sync
 5. **Auth (Basic/Digest)** - Hikvision qurilmasiga qarab Basic yoki Digest talab qilishi mumkin; client Basic → Digest fallback qiladi
 6. **Optional backend-first provisioning** - If `VITE_BACKEND_URL` + `VITE_SCHOOL_ID` are set, the app creates the student on the Fastify backend first and reports per-device results back (supports rollback logic via status).
 7. **Provisioning token** - Set `VITE_BACKEND_TOKEN` in desktop and `PROVISIONING_TOKEN` in backend to allow service-to-service calls without JWT.
+8. **UI provisioning panel** - Register panel now shows backend provisioning status and allows retry for failed devices.
