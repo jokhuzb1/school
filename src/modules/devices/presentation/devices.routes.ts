@@ -76,7 +76,22 @@ export default async function (fastify: FastifyInstance) {
         requireRoles(user, ['SCHOOL_ADMIN']);
         await requireDeviceSchoolScope(user, id);
 
-        return prisma.device.delete({ where: { id } });
+        return prisma.$transaction(async (tx) => {
+          // Clear references before delete (FK RESTRICT)
+          await tx.attendanceEvent.updateMany({
+            where: { deviceId: id },
+            data: { deviceId: null },
+          });
+          await tx.provisioningLog.updateMany({
+            where: { deviceId: id },
+            data: { deviceId: null },
+          });
+          await tx.studentDeviceLink.deleteMany({
+            where: { deviceId: id },
+          });
+
+          return tx.device.delete({ where: { id } });
+        });
       } catch (err) {
         return sendHttpError(reply, err);
       }

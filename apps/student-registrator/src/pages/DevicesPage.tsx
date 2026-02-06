@@ -8,8 +8,10 @@ import {
   fetchSchoolDevices,
   createSchoolDevice,
   updateSchoolDevice,
+  deleteSchoolDevice,
   getWebhookInfo,
   BACKEND_URL,
+  deleteDevice,
 } from '../api';
 import { useGlobalToast } from '../hooks/useToast';
 import { Icons } from '../components/ui/Icons';
@@ -40,6 +42,7 @@ export function DevicesPage() {
   const [showWebhookAdvanced, setShowWebhookAdvanced] = useState(false);
   const [backendDevices, setBackendDevices] = useState<SchoolDeviceInfo[]>([]);
   const [backendLoading, setBackendLoading] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<SchoolDeviceInfo | null>(null);
   const { addToast } = useGlobalToast();
 
   useEffect(() => {
@@ -395,6 +398,26 @@ export function DevicesPage() {
     }
   };
 
+  const handleDeleteDevice = async () => {
+    if (!pendingDelete) return;
+    setLoading(true);
+    try {
+      const local = getCredentialsForBackend(pendingDelete);
+      if (local) {
+        await deleteDevice(local.id);
+      }
+      await deleteSchoolDevice(pendingDelete.id);
+      await Promise.all([loadBackendDevices(), loadCredentials()]);
+      addToast("Qurilma o'chirildi", 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Qurilmani o\'chirishda xato';
+      addToast(message, 'error');
+    } finally {
+      setLoading(false);
+      setPendingDelete(null);
+    }
+  };
+
   const deviceLimitReached = credentials.length >= 6;
   const openCreateModal = () => {
     setEditingBackendId(null);
@@ -725,6 +748,13 @@ export function DevicesPage() {
                         >
                           <Icons.Edit />
                         </button>
+                        <button
+                          className="btn-icon btn-danger"
+                          onClick={() => setPendingDelete(backend)}
+                          title="O'chirish"
+                        >
+                          <Icons.Trash />
+                        </button>
                       </div>
                     </div>
                   );
@@ -894,6 +924,42 @@ export function DevicesPage() {
                   </p>
                 )}
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div className="modal-overlay" onClick={() => setPendingDelete(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Qurilmani o'chirish</h3>
+              <button className="modal-close" onClick={() => setPendingDelete(null)}>
+                <Icons.X />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="notice notice-warning">
+                <strong>{pendingDelete.name}</strong> qurilmasi o'chiriladi. Davom etasizmi?
+              </p>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="button button-danger"
+                  onClick={handleDeleteDevice}
+                  disabled={loading}
+                >
+                  <Icons.Trash /> O'chirish
+                </button>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => setPendingDelete(null)}
+                  disabled={loading}
+                >
+                  <Icons.X /> Bekor qilish
+                </button>
+              </div>
             </div>
           </div>
         </div>

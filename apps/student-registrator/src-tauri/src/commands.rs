@@ -342,10 +342,15 @@ pub async fn register_student(
     );
 
     let mut results = Vec::new();
+    let mut successful_devices: Vec<DeviceConfig> = Vec::new();
+    let mut abort_error: Option<String> = None;
 
     let mut devices_changed = false;
 
     for device in devices.iter_mut() {
+        if abort_error.is_some() {
+            break;
+        }
         let selected_by_backend_id = if target_backend_ids.is_empty() {
             true
         } else {
@@ -381,7 +386,7 @@ pub async fn register_student(
                 let device_display_name = device_label(device);
                 let device_name = Some(device_display_name.as_str());
                 let device_location = Some(device.host.as_str());
-                let _ = api
+                if let Err(err) = api
                     .report_device_result(
                         pid,
                         backend_device_id,
@@ -393,7 +398,10 @@ pub async fn register_student(
                         &employee_no,
                         connection.message.as_deref(),
                     )
-                    .await;
+                    .await
+                {
+                    abort_error = Some(format!("Backend report failed: {}", err));
+                }
             }
             results.push(RegisterDeviceResult {
                 device_id: device.id.clone(),
@@ -402,10 +410,17 @@ pub async fn register_student(
                 user_create: None,
                 face_upload: None,
             });
+            if abort_error.is_none() {
+                abort_error = Some(format!(
+                    "Qurilma {}: Ulanish sozlamalari muddati tugagan",
+                    device_label(device)
+                ));
+            }
             continue;
         }
 
         let client = HikvisionClient::new(device.clone());
+        let mut user_created = false;
         
         // Test connection
         let connection = client.test_connection().await;
@@ -430,8 +445,9 @@ pub async fn register_student(
         let device_location = Some(device.host.as_str());
 
         if !connection.ok {
+            let connection_message = connection.message.clone();
             if let (Some(api), Some(pid)) = (api_client.as_ref(), provisioning_id.as_ref()) {
-                let _ = api
+                if let Err(err) = api
                     .report_device_result(
                         pid,
                         backend_device_id,
@@ -443,7 +459,10 @@ pub async fn register_student(
                         &employee_no,
                         connection.message.as_deref(),
                     )
-                    .await;
+                    .await
+                {
+                    abort_error = Some(format!("Backend report failed: {}", err));
+                }
             }
             results.push(RegisterDeviceResult {
                 device_id: device.id.clone(),
@@ -452,6 +471,10 @@ pub async fn register_student(
                 user_create: None,
                 face_upload: None,
             });
+            if abort_error.is_none() {
+                let reason = connection_message.unwrap_or_else(|| "Ulanishda xato".to_string());
+                abort_error = Some(format!("Qurilma {}: {}", device_label(device), reason));
+            }
             continue;
         }
 
@@ -466,7 +489,7 @@ pub async fn register_student(
 
         if !user_create.ok {
             if let (Some(api), Some(pid)) = (api_client.as_ref(), provisioning_id.as_ref()) {
-                let _ = api
+                if let Err(err) = api
                     .report_device_result(
                         pid,
                         backend_device_id,
@@ -478,7 +501,10 @@ pub async fn register_student(
                         &employee_no,
                         user_create.error_msg.as_deref(),
                     )
-                    .await;
+                    .await
+                {
+                    abort_error = Some(format!("Backend report failed: {}", err));
+                }
             }
             results.push(RegisterDeviceResult {
                 device_id: device.id.clone(),
@@ -487,8 +513,15 @@ pub async fn register_student(
                 user_create: Some(user_create),
                 face_upload: None,
             });
+            if abort_error.is_none() {
+                abort_error = Some(format!(
+                    "Qurilma {}: Qurilmada foydalanuvchi yaratishda xato",
+                    device_label(device)
+                ));
+            }
             continue;
         }
+        user_created = true;
 
         // Upload face
         let face_upload = client.upload_face(
@@ -500,7 +533,7 @@ pub async fn register_student(
 
         if let (Some(api), Some(pid)) = (api_client.as_ref(), provisioning_id.as_ref()) {
             let status = if face_upload.ok { "SUCCESS" } else { "FAILED" };
-            let _ = api
+            if let Err(err) = api
                 .report_device_result(
                     pid,
                     backend_device_id,
@@ -512,7 +545,10 @@ pub async fn register_student(
                     &employee_no,
                     face_upload.error_msg.as_deref(),
                 )
-                .await;
+                .await
+            {
+                abort_error = Some(format!("Backend report failed: {}", err));
+            }
         }
 
         results.push(RegisterDeviceResult {
@@ -520,19 +556,50 @@ pub async fn register_student(
             device_name: device_label(device),
             connection,
             user_create: Some(user_create),
-            face_upload: Some(face_upload),
+            face_upload: Some(face_upload.clone()),
         });
+
+        if face_upload.ok {
+            successful_devices.push(device.clone());
+        } else {
+            if user_created {
+                let _ = client.delete_user(&employee_no).await;
+            }
+            if abort_error.is_none() {
+                abort_error = Some(format!(
+                    "Qurilma {}: Qurilmaga rasm yuklashda xato",
+                    device_label(device)
+                ));
+            }
+        }
     }
 
     if devices_changed {
         let _ = save_devices(&devices);
     }
 
-    // Sync to main backend if URL provided
-    if let Some(url) = backend_url {
-        let client = api_client.unwrap_or_else(|| ApiClient::new(url, backend_token));
-        let _ = client.sync_student(&employee_no, &full_name, &gender).await;
+    if let Some(message) = abort_error {
+        let mut rollback_errors: Vec<String> = Vec::new();
+        for dev in successful_devices.iter() {
+            let client = HikvisionClient::new(dev.clone());
+            let result = client.delete_user(&employee_no).await;
+            if !result.ok {
+                let label = device_label(dev);
+                let err = result.error_msg.unwrap_or_else(|| "Delete failed".to_string());
+                rollback_errors.push(format!("{}: {}", label, err));
+            }
+        }
+        if rollback_errors.is_empty() {
+            return Err(message);
+        }
+        return Err(format!(
+            "{}. Rollback errors: {}",
+            message,
+            rollback_errors.join("; ")
+        ));
     }
+
+    // Backend provisioning already handles server sync; skip legacy /api/students/sync call.
 
     Ok(RegisterResult {
         employee_no,

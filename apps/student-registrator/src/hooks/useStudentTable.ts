@@ -34,7 +34,10 @@ type NormalizedSaveError = {
   raw: string;
 };
 
-function normalizeSaveError(err: unknown): NormalizedSaveError {
+function normalizeSaveError(
+  err: unknown,
+  resolveDeviceLabel?: (input: string) => string,
+): NormalizedSaveError {
   const raw = (err instanceof Error ? err.message : String(err || 'Xato'))
     .replace(/^Error:\s*/i, '')
     .trim();
@@ -131,6 +134,19 @@ function normalizeSaveError(err: unknown): NormalizedSaveError {
     };
   }
 
+  if (resolveDeviceLabel) {
+    message = resolveDeviceLabel(message);
+  }
+
+  if (message.toLowerCase().includes('operation timed out')) {
+    const deviceMatch = message.match(/Qurilma\s+(.+?):\s*/i);
+    const deviceName = deviceMatch?.[1]?.trim();
+    const uzbek = deviceName
+      ? `Qurilm ${deviceName} bilan bog'liq xatolik, tarmoqni tekshiring.`
+      : "Qurilma bilan bog'liq xatolik, tarmoqni tekshiring.";
+    return { code: 'TIMEOUT', message: uzbek, raw };
+  }
+
   return {
     code: 'UNKNOWN',
     message: message || "Noma'lum xato",
@@ -138,7 +154,9 @@ function normalizeSaveError(err: unknown): NormalizedSaveError {
   };
 }
 
-export function useStudentTable(): UseStudentTableReturn {
+export function useStudentTable(options?: {
+  resolveDeviceLabel?: (input: string) => string;
+}): UseStudentTableReturn {
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [lastRegisterResult, setLastRegisterResult] = useState<RegisterResult | null>(null);
@@ -292,6 +310,7 @@ export function useStudentTable(): UseStudentTableReturn {
         };
 
         let reason = "";
+        let deviceLabel = firstFailure.deviceName || firstFailure.deviceId;
         if (!firstFailure.connection.ok) {
           reason = pickReason(undefined, firstFailure.connection.message);
         } else if (firstFailure.userCreate && !firstFailure.userCreate.ok) {
@@ -306,7 +325,7 @@ export function useStudentTable(): UseStudentTableReturn {
           )}`;
         }
 
-        const errorMessage = `Hikvision yozilmadi (${failedDevices.length} ta qurilma). ${reason}`;
+        const errorMessage = `Hikvision yozilmadi (${failedDevices.length} ta qurilma). Qurilma: ${deviceLabel}. ${reason}`;
 
         setStudents(prev => prev.map(s => 
           s.id === id ? { ...s, status: 'error' as const, error: errorMessage, errorCode: 'DEVICE_SYNC_FAILED' } : s
@@ -324,7 +343,7 @@ export function useStudentTable(): UseStudentTableReturn {
         error: err instanceof Error ? err.message : String(err || "Unknown error"),
         raw: err,
       });
-      const normalized = normalizeSaveError(err);
+      const normalized = normalizeSaveError(err, options?.resolveDeviceLabel);
       setStudents(prev => prev.map(s => 
         s.id === id ? { 
           ...s, 

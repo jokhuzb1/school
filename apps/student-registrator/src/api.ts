@@ -457,6 +457,17 @@ export async function updateSchoolDevice(
   return res.json();
 }
 
+export async function deleteSchoolDevice(id: string): Promise<boolean> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/devices/${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || 'Failed to delete backend device');
+  }
+  return true;
+}
+
 export async function createClass(schoolId: string, name: string, gradeLevel: number): Promise<ClassInfo> {
   const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/classes`, {
     method: 'POST',

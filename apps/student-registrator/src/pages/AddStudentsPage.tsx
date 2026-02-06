@@ -38,6 +38,16 @@ export function AddStudentsPage() {
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isProvModalOpen, setIsProvModalOpen] = useState(false);
 
+  const resolveDeviceLabel = useCallback((input: string) => {
+    if (!backendDevices.length) return input;
+    const byId = new Map(backendDevices.map((d) => [d.id, d.name]));
+    return input.replace(/Backend ([a-f0-9-]{36})/gi, (full, id) => {
+      const name = byId.get(id);
+      if (!name) return full;
+      return name;
+    });
+  }, [backendDevices]);
+
   const {
     students,
     addStudent,
@@ -50,7 +60,7 @@ export function AddStudentsPage() {
     isSaving,
     lastRegisterResult,
     lastProvisioningId,
-  } = useStudentTable();
+  } = useStudentTable({ resolveDeviceLabel });
 
   const { parseExcel, resizeImages } = useExcelImport();
   const { addToast } = useGlobalToast();
