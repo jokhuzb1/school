@@ -19,6 +19,8 @@ export function ProvisioningPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [activeTab, setActiveTab] = useState<'devices' | 'logs'>('devices');
+
   const fetchDetails = useCallback(async () => {
     if (!provisioningId) return;
     setLoading(true);
@@ -45,6 +47,10 @@ export function ProvisioningPanel({
       return;
     }
     fetchDetails();
+    // Default to logs if we are looking at logs or if there are issues
+    if (activeTab === 'devices' && details?.status === 'FAILED') {
+      // stay on devices to see failures
+    }
   }, [provisioningId, fetchDetails]);
 
   const summary = useMemo(() => {
@@ -56,10 +62,6 @@ export function ProvisioningPanel({
     return { total, success, failed, pending };
   }, [details]);
 
-  const failedDevices = useMemo(() => {
-    if (!details?.devices) return [];
-    return details.devices.filter((d) => d.status === 'FAILED');
-  }, [details]);
 
   const retryFailed = useCallback(async () => {
     if (!provisioningId || !details?.devices) return;
@@ -84,150 +86,144 @@ export function ProvisioningPanel({
     } finally {
       setLoading(false);
     }
-  }, [details, fetchDetails, provisioningId]);
+  }, [details, fetchDetails, provisioningId, addToast]);
 
   if (!provisioningId && !registerResult) return null;
 
   return (
-    <div className="card provisioning-panel">
-      <div className="panel-header">
-        <div>
-          <div className="panel-title">Provisioning holati</div>
-          {provisioningId ? (
-            <div className="panel-subtitle">ID: {provisioningId}</div>
-          ) : (
-            <div className="panel-subtitle">Provisioning ID yo'q</div>
-          )}
-        </div>
-        {provisioningId && (
-          <div className="panel-actions">
-            <button
-              type="button"
-              className="btn-icon"
-              onClick={fetchDetails}
-              disabled={loading}
-              title="Yangilash"
-              aria-label="Yangilash"
-            >
-              <Icons.Refresh />
-            </button>
-            <button
-              type="button"
-              className="btn-icon"
-              onClick={retryFailed}
-              disabled={loading || !summary?.failed}
-              title="Failed qayta"
-              aria-label="Failed qayta"
-            >
-              <Icons.Refresh />
-            </button>
+    <div className="provisioning-details-container">
+      {/* Summary Grid */}
+      {summary && (
+        <div className="provisioning-summary-grid">
+          <div className="provisioning-stat">
+            <span className="provisioning-stat-label">Jami</span>
+            <span className="provisioning-stat-value">{summary.total}</span>
           </div>
-        )}
-      </div>
-
-      {registerResult && (
-        <div className="provisioning-results">
-          {registerResult.results.map((result) => (
-            <div key={result.deviceId}>
-              {result.deviceName}: {result.connection.ok ? 'OK' : 'Offline'}
-              {result.userCreate && !result.userCreate.ok
-                ? ` - User xato (${result.userCreate.statusString || 'error'})`
-                : ''}
-              {result.faceUpload && !result.faceUpload.ok
-                ? ` - Face xato (${result.faceUpload.statusString || 'error'})`
-                : ''}
-            </div>
-          ))}
+          <div className="provisioning-stat">
+            <span className="provisioning-stat-label">Muvaffaqiyat</span>
+            <span className="provisioning-stat-value success">{summary.success}</span>
+          </div>
+          <div className="provisioning-stat">
+            <span className="provisioning-stat-label">Xato</span>
+            <span className="provisioning-stat-value danger">{summary.failed}</span>
+          </div>
+          <div className="provisioning-stat">
+            <span className="provisioning-stat-label">Kutilmoqda</span>
+            <span className="provisioning-stat-value warning">{summary.pending}</span>
+          </div>
         </div>
       )}
 
       {error && <div className="notice notice-error">{error}</div>}
 
-      {provisioningId && (
-        <div className="provisioning-status">
-          <span className="badge">
-            {details?.status || (loading ? 'Yuklanmoqda' : "Noma'lum")}
-          </span>
-          {summary && (
-            <div className="provisioning-summary">
-              Jami: {summary.total} | Muvaffaqiyatli: {summary.success} | Xato:{' '}
-              {summary.failed} | Kutilmoqda: {summary.pending}
-            </div>
-          )}
+      <div className="tabs">
+        <div 
+          className={`tab ${activeTab === 'devices' ? 'active' : ''}`}
+          onClick={() => setActiveTab('devices')}
+        >
+          Qurilmalar ({details?.devices?.length || 0})
         </div>
-      )}
-
-      {failedDevices.length > 0 && (
-        <div className="failed-list">
-          {failedDevices.map((link) => (
-            <div key={link.id} className="failed-item">
-              <strong>{link.device?.name || link.deviceId}</strong>
-              <span>{link.lastError || "Noma'lum xato"}</span>
-            </div>
-          ))}
+        <div 
+          className={`tab ${activeTab === 'logs' ? 'active' : ''}`}
+          onClick={() => setActiveTab('logs')}
+        >
+          Loglar ({logs.length})
         </div>
-      )}
+        
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+          <button
+            type="button"
+            className="btn-icon btn-compact"
+            onClick={fetchDetails}
+            disabled={loading}
+            title="Yangilash"
+          >
+            <Icons.Refresh />
+          </button>
+          {summary?.failed ? (
+            <button
+              type="button"
+              className="button button-secondary button-compact"
+              onClick={retryFailed}
+              disabled={loading}
+            >
+              <Icons.Refresh /> Failed Qayta
+            </button>
+          ) : null}
+        </div>
+      </div>
 
-      {details?.devices && details.devices.length > 0 && (
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Qurilma</th>
-                <th>Status</th>
-                <th>Xato</th>
-              </tr>
-            </thead>
-            <tbody>
-              {details.devices.map((link) => (
-                <tr key={link.id}>
-                  <td>{link.device?.name || link.deviceId}</td>
-                  <td>{link.status}</td>
-                  <td>{link.lastError || '-'}</td>
+      <div className="provisioning-tab-content">
+        {activeTab === 'devices' && (
+          <div className="table-container">
+            <table className="table table-compact">
+              <thead>
+                <tr>
+                  <th>Qurilma</th>
+                  <th>Holat</th>
+                  <th>Xato</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {details?.devices?.map((link) => (
+                  <tr key={link.id}>
+                    <td className="font-medium">{link.device?.name || link.deviceId}</td>
+                    <td>
+                      <span className={`badge badge-${
+                        link.status === 'SUCCESS' ? 'success' : 
+                        link.status === 'FAILED' ? 'danger' : 'warning'
+                      }`}>
+                        {link.status}
+                      </span>
+                    </td>
+                    <td className="text-secondary">{link.lastError || '-'}</td>
+                  </tr>
+                ))}
+                {!details?.devices?.length && (
+                  <tr>
+                    <td colSpan={3} className="text-center py-4 text-muted">A'lumot yo'q</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      {logs.length > 0 && (
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Vaqt</th>
-                <th>Bosqich</th>
-                <th>Daraja</th>
-                <th>Status</th>
-                <th>Xabar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.slice(0, 50).map((log) => (
-                <tr key={log.id}>
-                  <td>{new Date(log.createdAt).toLocaleString()}</td>
-                  <td>{log.stage}</td>
-                  <td>{log.level}</td>
-                  <td>{log.status || '-'}</td>
-                  <td>{log.message || '-'}</td>
+        {activeTab === 'logs' && (
+          <div className="table-container">
+            <table className="table table-compact">
+              <thead>
+                <tr>
+                  <th>Vaqt</th>
+                  <th>Bosqich</th>
+                  <th>Xabar</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {logs.length > 50 && (
-            <div className="notice notice-warning">
-              Loglar ko'p: oxirgi 50 ta ko'rsatildi.
-            </div>
-          )}
-        </div>
-      )}
-
-      {provisioningId && !loading && !error && logs.length === 0 && (
-        <div className="notice notice-warning">
-          Hozircha loglar yo'q. Qayta yangilang yoki provisioning amalini qayta ishga tushiring.
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {logs.slice(0, 50).map((log) => (
+                  <tr key={log.id}>
+                    <td className="whitespace-nowrap">{new Date(log.createdAt).toLocaleTimeString()}</td>
+                    <td className="whitespace-nowrap">
+                      <span className={`badge ${
+                        log.level === 'ERROR' ? 'badge-danger' : 
+                        log.level === 'WARN' ? 'badge-warning' : 'badge-primary'
+                      }`}>
+                        {log.stage}
+                      </span>
+                    </td>
+                    <td className="text-secondary">{log.message || '-'}</td>
+                  </tr>
+                ))}
+                {logs.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="text-center py-4 text-muted">Hozircha loglar yo'q</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

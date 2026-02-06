@@ -1,0 +1,16 @@
+﻿src/pages/StudentsPage.tsx(390,11): error TS2322: Type 'StudentLiveState' is not assignable to type '{ running: boolean; byDeviceId: Record<string, LiveDeviceResult>; }'.
+  Types of property 'byDeviceId' are incompatible.
+    Type 'Record<string, LiveDeviceResult>' is not assignable to type 'Record<string, import("D:/projects-advanced/school/apps/student-registrator/src/api").LiveDeviceResult>'.
+      'string' index signatures are incompatible.
+        Type 'LiveDeviceResult' is not assignable to type 'import("D:/projects-advanced/school/apps/student-registrator/src/api").LiveDeviceResult'.
+          Types of property 'status' are incompatible.
+            Type 'LiveStatus' is not assignable to type 'import("D:/projects-advanced/school/apps/student-registrator/src/api").LiveStatus'.
+              Type '"NO_CREDENTIALS"' is not assignable to type 'LiveStatus'.
+src/pages/StudentsPage.tsx(391,11): error TS2322: Type '(row: import("D:/projects-advanced/school/apps/student-registrator/src/api").StudentDiagnosticsRow) => Record<string, LiveDeviceResult>' is not assignable to type '(row: import("D:/projects-advanced/school/apps/student-registrator/src/api").StudentDiagnosticsRow) => Record<string, import("D:/projects-advanced/school/apps/student-registrator/src/api").LiveDeviceResult>'.
+  Type 'Record<string, LiveDeviceResult>' is not assignable to type 'Record<string, import("D:/projects-advanced/school/apps/student-registrator/src/api").LiveDeviceResult>'.
+    'string' index signatures are incompatible.
+      Type 'LiveDeviceResult' is not assignable to type 'import("D:/projects-advanced/school/apps/student-registrator/src/api").LiveDeviceResult'.
+        Types of property 'status' are incompatible.
+          Type 'LiveStatus' is not assignable to type 'import("D:/projects-advanced/school/apps/student-registrator/src/api").LiveStatus'.
+            Type '"NO_CREDENTIALS"' is not assignable to type 'LiveStatus'.
+

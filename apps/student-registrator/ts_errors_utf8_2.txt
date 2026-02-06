@@ -1,0 +1,5 @@
+﻿src/components/students/DiagnosticRow.tsx(3,38): error TS2305: Module '"../../types"' has no exported member 'LiveDeviceResult'.
+src/components/students/DiagnosticRow.tsx(3,56): error TS2305: Module '"../../types"' has no exported member 'LiveStatus'.
+src/components/students/DiagnosticSummary.tsx(2,38): error TS2305: Module '"../../types"' has no exported member 'LiveDeviceResult'.
+src/components/students/DiagnosticSummary.tsx(2,56): error TS2305: Module '"../../types"' has no exported member 'LiveStatus'.
+

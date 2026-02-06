@@ -23,4 +23,6 @@ export type {
   StudentDiagnosticsResponse,
   SchoolDeviceInfo,
   RecreateUserResult,
+  LiveStatus,
+  LiveDeviceResult,
 } from '../api';

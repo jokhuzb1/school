@@ -1,0 +1,22 @@
+﻿src/components/students/DiagnosticRow.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/components/students/DiagnosticRow.tsx(3,38): error TS2305: Module '"../../types"' has no exported member 'LiveDeviceResult'.
+src/components/students/DiagnosticRow.tsx(3,56): error TS2305: Module '"../../types"' has no exported member 'LiveStatus'.
+src/components/students/DiagnosticsFilterBar.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/students/DiagnosticSummary.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/components/students/DiagnosticSummary.tsx(2,38): error TS2305: Module '"../../types"' has no exported member 'LiveDeviceResult'.
+src/components/students/DiagnosticSummary.tsx(2,56): error TS2305: Module '"../../types"' has no exported member 'LiveStatus'.
+src/components/ui/Pagination.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/pages/StudentsPage.tsx(10,3): error TS2305: Module '"../api"' has no exported member 'syncStudentToDevices'.
+src/pages/StudentsPage.tsx(180,5): error TS2353: Object literal may only specify known properties, and 'initialSort' does not exist in type 'UseTableSortOptions<StudentDiagnosticsRow>'.
+src/pages/StudentsPage.tsx(284,80): error TS2345: Argument of type '"warn"' is not assignable to parameter of type '"error" | "success"'.
+src/pages/StudentsPage.tsx(359,7): error TS2322: Type '(_: any, idx: any) => any' is not assignable to type '(item: StudentDiagnosticsRow) => ReactNode'.
+  Target signature provides too few arguments. Expected 2 or more, but got 1.
+src/pages/StudentsPage.tsx(359,14): error TS7006: Parameter '_' implicitly has an 'any' type.
+src/pages/StudentsPage.tsx(359,17): error TS7006: Parameter 'idx' implicitly has an 'any' type.
+src/pages/StudentsPage.tsx(508,11): error TS2322: Type '(key: string) => void' is not assignable to type '(keys: Set<string>) => void'.
+  Types of parameters 'key' and 'keys' are incompatible.
+    Type 'Set<string>' is not assignable to type 'string'.
+src/pages/StudentsPage.tsx(511,11): error TS2322: Type '(column: keyof StudentDiagnosticsRow) => void' is not assignable to type '(column: string) => void'.
+  Types of parameters 'column' and 'column' are incompatible.
+    Type 'string' is not assignable to type 'keyof StudentDiagnosticsRow'.
+

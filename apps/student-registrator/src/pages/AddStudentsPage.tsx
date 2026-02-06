@@ -36,6 +36,7 @@ export function AddStudentsPage() {
   const [newClassGrade, setNewClassGrade] = useState<number>(1);
   const [isCreatingClass, setIsCreatingClass] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isProvModalOpen, setIsProvModalOpen] = useState(false);
 
   const {
     students,
@@ -50,6 +51,7 @@ export function AddStudentsPage() {
     lastRegisterResult,
     lastProvisioningId,
   } = useStudentTable();
+
   const { parseExcel, resizeImages } = useExcelImport();
   const { addToast } = useGlobalToast();
 
@@ -465,6 +467,17 @@ export function AddStudentsPage() {
               <Icons.Save /> Barchasini Saqlash ({pendingCount})
             </button>
           )}
+
+          {lastProvisioningId && (
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={() => setIsProvModalOpen(true)}
+              title="Provisioning holatini ko'rish"
+            >
+              <Icons.Refresh />
+            </button>
+          )}
         </div>
       </div>
 
@@ -519,10 +532,38 @@ export function AddStudentsPage() {
         onApplyMapping={handleApplyMapping}
       />
 
-      <ProvisioningPanel
-        provisioningId={lastProvisioningId}
-        registerResult={lastRegisterResult}
-      />
+      {/* Provisioning Modal */}
+      {isProvModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsProvModalOpen(false)}>
+          <div className="modal modal-provisioning" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>Provisioning Holati</h3>
+                {lastProvisioningId && (
+                  <p className="text-secondary text-xs">ID: {lastProvisioningId}</p>
+                )}
+              </div>
+              <button className="modal-close" onClick={() => setIsProvModalOpen(false)}>
+                <Icons.X />
+              </button>
+            </div>
+            <div className="modal-body">
+              <ProvisioningPanel
+                provisioningId={lastProvisioningId}
+                registerResult={lastRegisterResult}
+              />
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="button button-secondary" 
+                onClick={() => setIsProvModalOpen(false)}
+              >
+                Yopish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="page-content">

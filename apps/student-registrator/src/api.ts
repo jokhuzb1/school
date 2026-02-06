@@ -26,6 +26,15 @@ export interface DeviceConnectionResult {
   deviceId?: string;
 }
 
+
+export type LiveStatus = 'PRESENT' | 'ABSENT' | 'OFFLINE' | 'EXPIRED' | 'UNSENT' | 'PENDING' | 'ERROR' | 'NO_CREDENTIALS';
+
+export interface LiveDeviceResult {
+  status: LiveStatus;
+  message?: string | null;
+  checkedAt?: string;
+}
+
 export interface StudentDeviceLiveCheckResult {
   deviceId: string;
   deviceExternalId?: string | null;
@@ -683,6 +692,38 @@ export async function retryProvisioning(
     backendToken: token || '',
     deviceIds,
   });
+}
+
+/**
+ * Syncs a student to devices by finding their last provisioning ID and retrying it.
+ * This is used when a student's profile is updated and needs to be pushed to devices.
+ */
+export async function syncStudentToDevices(studentId: string): Promise<boolean> {
+  const user = getAuthUser();
+  if (!user?.schoolId) return false;
+
+  try {
+    // 1. Find the last provisioning ID for this student from audit logs
+    const response = await getSchoolProvisioningLogs(user.schoolId, {
+      studentId,
+      limit: 1,
+      level: 'INFO',
+      stage: 'PROVISIONING_START',
+    });
+
+    const lastLog = response.data[0];
+    if (!lastLog || !lastLog.provisioningId) {
+      console.warn(`[Sync] No provisioning found for student ${studentId}`);
+      return false;
+    }
+
+    // 2. Retry the provisioning
+    const result = await retryProvisioning(lastLog.provisioningId);
+    return result.ok;
+  } catch (err) {
+    console.error(`[Sync] Failed to sync student ${studentId}:`, err);
+    return false;
+  }
 }
 
 type FaceEncodeOptions = {

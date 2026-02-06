@@ -9,32 +9,34 @@ interface PaginationProps {
 
 export function Pagination({ page, pageSize, total, onChange }: PaginationProps) {
   const totalPages = Math.ceil(total / pageSize);
-  const start = (page - 1) * pageSize + 1;
-  const end = Math.min(page * pageSize, total);
+  if (totalPages <= 1) return null;
 
-  if (total === 0) return null;
+  const startIdx = (page - 1) * pageSize + 1;
+  const endIdx = Math.min(page * pageSize, total);
 
   return (
     <div className="pagination">
-      <span className="pagination-info">
-        {start}-{end} / {total}
-      </span>
+      <div className="pagination-info">
+        <b>{startIdx}-{endIdx}</b> / {total} tadan
+      </div>
       <div className="pagination-actions">
         <button
-          className="btn-icon"
-          onClick={() => onChange(page - 1)}
+          className="button button-secondary button-compact"
           disabled={page <= 1}
+          onClick={() => onChange(page - 1)}
           aria-label="Oldingi sahifa"
         >
           <Icons.ChevronLeft />
         </button>
+        
         <span className="pagination-page">
           {page} / {totalPages}
         </span>
+
         <button
-          className="btn-icon"
-          onClick={() => onChange(page + 1)}
+          className="button button-secondary button-compact"
           disabled={page >= totalPages}
+          onClick={() => onChange(page + 1)}
           aria-label="Keyingi sahifa"
         >
           <Icons.ChevronRight />

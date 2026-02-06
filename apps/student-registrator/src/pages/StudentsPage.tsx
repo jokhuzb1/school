@@ -7,13 +7,16 @@ import {
   fetchSchoolDevices,
   getAuthUser,
   updateStudentProfile,
+  syncStudentToDevices,
 } from '../api';
 import { useGlobalToast } from '../hooks/useToast';
 import { useTableSelection } from '../hooks/useTableSelection';
 import { useTableSort } from '../hooks/useTableSort';
 import { Icons } from '../components/ui/Icons';
+import { DataTable, ColumnDef } from '../components/ui/DataTable';
+import { DiagnosticsFilterBar } from '../components/students/DiagnosticsFilterBar';
+import { DiagnosticSummary } from '../components/students/DiagnosticSummary';
 import { Pagination } from '../components/ui/Pagination';
-import { FilterBar } from '../components/students/FilterBar';
 import { ExportButton } from '../components/students/ExportButton';
 import type {
   ClassInfo,
@@ -45,7 +48,8 @@ type StudentLiveState = {
   byDeviceId: Record<string, LiveDeviceResult>;
 };
 
-// Helpers
+const PAGE_SIZE = 25;
+
 function normalize(value?: string | null): string {
   return (value || '').trim().toLowerCase();
 }
@@ -123,34 +127,40 @@ function mapBackendStatus(row: StudentDiagnosticsRow): Record<string, LiveDevice
   return result;
 }
 
-function summarizeStatuses(statuses: LiveDeviceResult[], running: boolean): { text: string; isOk: boolean } {
-  if (running) return { text: 'Tekshirilmoqda...', isOk: true };
-  if (statuses.length === 0) return { text: "Qurilma yo'q", isOk: false };
+function summarizeStatuses(statuses: LiveDeviceResult[], running: boolean): string {
+  if (running) return 'Tekshirilmoqda...';
+  if (statuses.length === 0) return "Qurilma yo'q";
   const ok = statuses.filter((item) => item.status === 'PRESENT').length;
   const issues = statuses.filter((item) =>
     ['ABSENT', 'OFFLINE', 'EXPIRED', 'NO_CREDENTIALS', 'ERROR'].includes(item.status),
   ).length;
-  if (issues === 0 && ok === statuses.length) return { text: `OK ${ok}/${statuses.length}`, isOk: true };
-  if (issues === 0) return { text: `Jarayonda ${ok}/${statuses.length}`, isOk: true };
-  return { text: `Muammo ${issues}`, isOk: false };
+  if (issues === 0 && ok === statuses.length) return `OK ${ok}/${statuses.length}`;
+  if (issues === 0) return `Jarayonda ${ok}/${statuses.length}`;
+  return `Muammo ${issues}`;
 }
 
-const PAGE_SIZE = 25;
+function extractNameComponents(fullName: string) {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return { lastName: parts[0], firstName: '', fatherName: '' };
+  if (parts.length === 2) return { lastName: parts[0], firstName: parts[1], fatherName: '' };
+  return {
+    lastName: parts[0],
+    firstName: parts[1],
+    fatherName: parts.slice(2).join(' ')
+  };
+}
 
 export function StudentsPage() {
   const [availableClasses, setAvailableClasses] = useState<ClassInfo[]>([]);
   const [localDevices, setLocalDevices] = useState<DeviceConfig[]>([]);
   const [backendDevices, setBackendDevices] = useState<SchoolDeviceInfo[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [diagnostics, setDiagnostics] = useState<StudentDiagnosticsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [liveStateByStudent, setLiveStateByStudent] = useState<Record<string, StudentLiveState>>({});
-  const [openPopoverStudentId, setOpenPopoverStudentId] = useState<string | null>(null);
-
-  // Editing
+  
   const [editingStudent, setEditingStudent] = useState<StudentDiagnosticsRow | null>(null);
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
@@ -158,52 +168,25 @@ export function StudentsPage() {
   const [editClassId, setEditClassId] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Pagination
   const [page, setPage] = useState(1);
-
+  
   const { addToast } = useGlobalToast();
   const schoolId = useMemo(() => getAuthUser()?.schoolId || '', []);
 
-  // Prepare data
-  const rows = diagnostics?.data || [];
-  
-  // Selection hook
+  const allRows = useMemo(() => diagnostics?.data || [], [diagnostics]);
+
+  const { sortedData, sortColumn, sortDirection, toggleSort } = useTableSort({
+    data: allRows,
+    defaultColumn: 'studentName',
+    defaultDirection: 'asc'
+  });
+
   const {
     selectedKeys,
     selectedCount,
-    isAllSelected,
-    isSelected,
     toggleItem,
-    toggleAll,
     clearSelection,
-  } = useTableSelection({ items: rows, keyField: 'studentId' });
-
-  // Sort hook
-  const { sortedData, sortColumn, sortDirection, toggleSort } = useTableSort({
-    data: rows,
-  });
-
-  // Filter by status
-  const filteredData = useMemo(() => {
-    if (!selectedStatus) return sortedData;
-    return sortedData.filter((row) => {
-      const liveState = liveStateByStudent[row.studentId];
-      const effectiveByDevice = liveState?.byDeviceId || mapBackendStatus(row);
-      const statusList = backendDevices.map(
-        (device) => effectiveByDevice[device.id] || { status: 'UNSENT' as LiveStatus },
-      );
-      const summary = summarizeStatuses(statusList, Boolean(liveState?.running));
-      if (selectedStatus === 'ok') return summary.isOk;
-      return !summary.isOk;
-    });
-  }, [sortedData, selectedStatus, liveStateByStudent, backendDevices]);
-
-  // Pagination
-  const total = filteredData.length;
-  const paginatedData = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredData.slice(start, start + PAGE_SIZE);
-  }, [filteredData, page]);
+  } = useTableSelection({ items: sortedData, keyField: 'studentId' });
 
   const localByBackendId = useMemo(() => {
     const map = new Map<string, DeviceConfig>();
@@ -221,7 +204,6 @@ export function StudentsPage() {
     return map;
   }, [localDevices]);
 
-  // Debounce search
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedSearchQuery(searchQuery.trim());
@@ -230,26 +212,24 @@ export function StudentsPage() {
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
-  // Load initial data
   useEffect(() => {
     if (!schoolId) return;
     const loadInitial = async () => {
       try {
-        const [classes, devices, school] = await Promise.all([
+        const [classes, devices, backend] = await Promise.all([
           fetchClasses(schoolId),
           fetchDevices(),
           fetchSchoolDevices(schoolId),
         ]);
         setAvailableClasses(classes);
         setLocalDevices(devices);
-        setBackendDevices(school);
+        setBackendDevices(backend);
       } catch (err) {
         console.error('Failed to load initial data:', err);
-        addToast("Boshlang'ich ma'lumotlarni yuklashda xato", 'error');
       }
     };
     loadInitial();
-  }, [schoolId, addToast]);
+  }, [schoolId]);
 
   const loadDiagnostics = useCallback(async () => {
     if (!schoolId) return;
@@ -260,68 +240,30 @@ export function StudentsPage() {
         search: debouncedSearchQuery || undefined,
       });
       setDiagnostics(data);
-      clearSelection();
     } catch (err) {
       console.error('Failed to load diagnostics:', err);
-      addToast('Diagnostikani yuklashda xato', 'error');
     } finally {
       setLoading(false);
     }
-  }, [schoolId, selectedClassId, debouncedSearchQuery, addToast, clearSelection]);
+  }, [schoolId, selectedClassId, debouncedSearchQuery]);
 
   useEffect(() => {
     loadDiagnostics();
   }, [loadDiagnostics]);
 
-  // Close popover on outside click
-  useEffect(() => {
-    const handleDocumentClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target) return;
-      if (target.closest('.diagnostics-hover')) return;
-      setOpenPopoverStudentId(null);
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpenPopoverStudentId(null);
-    };
-
-    document.addEventListener('mousedown', handleDocumentClick);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleDocumentClick);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, []);
-
-  // Edit handlers
   const startEdit = (student: StudentDiagnosticsRow) => {
     setEditingStudent(student);
-    setEditFirstName(student.firstName || '');
-    setEditLastName(student.lastName || '');
-    setEditFatherName(student.fatherName || '');
+    const { firstName, lastName, fatherName } = extractNameComponents(student.studentName);
+    setEditFirstName(student.firstName || firstName);
+    setEditLastName(student.lastName || lastName);
+    setEditFatherName(student.fatherName || fatherName);
     setEditClassId(student.classId || '');
   };
 
-  const cancelEdit = () => {
-    setEditingStudent(null);
-    setEditFirstName('');
-    setEditLastName('');
-    setEditFatherName('');
-    setEditClassId('');
-  };
+  const cancelEdit = () => setEditingStudent(null);
 
   const saveEdit = async () => {
     if (!editingStudent) return;
-    if (!editFirstName.trim() || !editLastName.trim()) {
-      addToast('Ism va familiya majburiy', 'error');
-      return;
-    }
-    if (!editClassId) {
-      addToast('Sinf majburiy', 'error');
-      return;
-    }
-
     setSavingEdit(true);
     try {
       await updateStudentProfile(editingStudent.studentId, {
@@ -333,8 +275,19 @@ export function StudentsPage() {
       addToast("O'quvchi yangilandi", 'success');
       cancelEdit();
       await loadDiagnostics();
+
+      // Background sync to devices
+      try {
+        const syncOk = await syncStudentToDevices(editingStudent.studentId);
+        if (syncOk) {
+          addToast("Qurilmalar bilan sinxronizatsiya qilindi", 'success');
+        } else {
+          addToast("Qurilmalarga yuborishda xato yoki provisioning topilmadi", 'error');
+        }
+      } catch (syncErr) {
+        console.error('Device sync error:', syncErr);
+      }
     } catch (err) {
-      console.error('Failed to update student:', err);
       addToast('Yangilashda xato', 'error');
     } finally {
       setSavingEdit(false);
@@ -364,12 +317,7 @@ export function StudentsPage() {
             : undefined);
 
         if (!localDevice) {
-          return {
-            backendDeviceId: backendDevice.id,
-            status: 'NO_CREDENTIALS' as LiveStatus,
-            message: "Bu kompyuterda credentials topilmadi",
-            checkedAt: new Date().toISOString(),
-          };
+          return { backendDeviceId: backendDevice.id, status: 'NO_CREDENTIALS' as LiveStatus };
         }
 
         try {
@@ -381,12 +329,7 @@ export function StudentsPage() {
             checkedAt: result.checkedAt,
           };
         } catch (err) {
-          return {
-            backendDeviceId: backendDevice.id,
-            status: 'ERROR' as LiveStatus,
-            message: err instanceof Error ? err.message : 'Live check xatosi',
-            checkedAt: new Date().toISOString(),
-          };
+          return { backendDeviceId: backendDevice.id, status: 'ERROR' as LiveStatus };
         }
       }),
     );
@@ -402,85 +345,149 @@ export function StudentsPage() {
 
     setLiveStateByStudent((prev) => ({
       ...prev,
-      [row.studentId]: {
-        running: false,
-        checkedAt: new Date().toISOString(),
-        byDeviceId,
-      },
+      [row.studentId]: { running: false, byDeviceId },
     }));
   };
 
-  // Sort icon render
-  const renderSortIcon = (column: keyof StudentDiagnosticsRow) => {
-    if (sortColumn !== column) {
-      return <Icons.ArrowUpDown />;
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return sortedData.slice(start, start + PAGE_SIZE);
+  }, [sortedData, page]);
+
+  const columns = useMemo<ColumnDef<StudentDiagnosticsRow>[]>(() => [
+    {
+      header: '#',
+      cell: (item) => {
+        const idx = sortedData.findIndex(s => s.studentId === item.studentId);
+        return (page - 1) * PAGE_SIZE + idx + 1;
+      },
+      width: 50,
+    },
+    {
+      header: "O'quvchi",
+      accessorKey: 'studentName',
+      sortable: true,
+      width: '25%',
+    },
+    {
+      header: 'Sinf',
+      accessorKey: 'className',
+      sortable: true,
+      width: '12%',
+    },
+    {
+      header: 'Device ID',
+      accessorKey: 'deviceStudentId',
+      sortable: true,
+      width: '12%',
+    },
+    {
+      header: 'Diagnostika',
+      cell: (row) => (
+        <DiagnosticSummary
+          row={row}
+          backendDevices={backendDevices}
+          liveState={liveStateByStudent[row.studentId]}
+          mapBackendStatus={mapBackendStatus}
+          formatDateTime={formatDateTime}
+          statusBadgeClass={statusBadgeClass}
+          statusLabel={statusLabel}
+          statusReason={statusReason}
+          summarizeStatuses={summarizeStatuses}
+        />
+      ),
+      width: '20%',
+    },
+    {
+      header: 'Amallar',
+      cell: (row) => (
+        <div className="action-buttons">
+          <button
+            className="button button-info button-compact"
+            onClick={() => runLiveCheck(row)}
+            disabled={liveStateByStudent[row.studentId]?.running}
+            title="Jonli tekshirish"
+          >
+            <Icons.Refresh />
+          </button>
+          <button
+            className="button button-secondary button-compact"
+            onClick={() => startEdit(row)}
+            title="Tahrirlash"
+          >
+            <Icons.Edit />
+          </button>
+        </div>
+      ),
+      width: '100px',
     }
-    return sortDirection === 'asc' ? <Icons.ChevronUp /> : <Icons.ChevronDown />;
-  };
+  ], [backendDevices, liveStateByStudent, page]);
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <h1 className="page-title">O'quvchilar</h1>
-          <p className="page-description">Sinf bo'yicha ro'yxat va live diagnostika</p>
+          <p className="page-description">Diagnostika va tahrirlash</p>
         </div>
         <div className="page-actions">
           <ExportButton
-            students={filteredData}
+            students={sortedData}
             selectedIds={selectedKeys}
             devices={backendDevices}
+            disabled={loading}
           />
         </div>
       </div>
 
-      <FilterBar
+      <DiagnosticsFilterBar
+        classes={availableClasses}
+        selectedClassId={selectedClassId}
+        onClassChange={setSelectedClassId}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        selectedClassId={selectedClassId}
-        classes={availableClasses}
-        onClassChange={(classId) => { setSelectedClassId(classId); setPage(1); }}
-        selectedStatus={selectedStatus}
-        onStatusChange={(status) => { setSelectedStatus(status); setPage(1); }}
+        onRefresh={loadDiagnostics}
+        loading={loading}
       />
 
       {editingStudent && (
-        <div className="card edit-user-panel">
-          <h2>O'quvchini tahrirlash</h2>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Familiya</label>
-              <input className="input" value={editLastName} onChange={(e) => setEditLastName(e.target.value)} />
+        <div className="overlay" onClick={cancelEdit}>
+          <div className="card edit-panel animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            <div className="panel-header">
+              <h2>O'quvchini tahrirlash</h2>
+              <button className="button button-secondary button-compact" onClick={cancelEdit}><Icons.X /></button>
             </div>
-            <div className="form-group">
-              <label>Ism</label>
-              <input className="input" value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} />
+            <div className="form-row">
+              <div className="form-group">
+                <label className="label">Familiya</label>
+                <input className="input" value={editLastName} onChange={(e) => setEditLastName(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="label">Ism</label>
+                <input className="input" value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} />
+              </div>
             </div>
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Otasining ismi</label>
-              <input className="input" value={editFatherName} onChange={(e) => setEditFatherName(e.target.value)} />
+            <div className="form-row">
+              <div className="form-group">
+                <label className="label">Otasining ismi</label>
+                <input className="input" value={editFatherName} onChange={(e) => setEditFatherName(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="label">Sinf</label>
+                <select className="input" value={editClassId} onChange={(e) => setEditClassId(e.target.value)}>
+                  <option value="">Tanlang</option>
+                  {availableClasses.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div className="form-group">
-              <label>Sinf</label>
-              <select className="input" value={editClassId} onChange={(e) => setEditClassId(e.target.value)}>
-                <option value="">Tanlang</option>
-                {availableClasses.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+            <div className="form-actions">
+              <button className="button button-primary" onClick={saveEdit} disabled={savingEdit}>
+                {savingEdit ? 'Saqlanmoqda...' : <><Icons.Check /> Saqlash</>}
+              </button>
+              <button className="button button-secondary" onClick={cancelEdit} disabled={savingEdit}>Bekor qilish</button>
             </div>
-          </div>
-          <div className="form-actions">
-            <button className="button button-primary" onClick={saveEdit} disabled={savingEdit}>
-              <Icons.Check /> Saqlash
-            </button>
-            <button className="button button-secondary" onClick={cancelEdit} disabled={savingEdit}>
-              <Icons.X /> Bekor qilish
-            </button>
           </div>
         </div>
       )}
@@ -488,160 +495,32 @@ export function StudentsPage() {
       <div className="page-content">
         {selectedCount > 0 && (
           <div className="selection-toolbar">
-            <span className="selection-count">{selectedCount} ta tanlandi</span>
-            <button className="button button-secondary button-compact" onClick={clearSelection}>
-              Bekor qilish
+            <span className="selection-info">{selectedCount} ta o'quvchi tanlandi</span>
+            <button className="button button-secondary button-compact" onClick={clearSelection} title="Tanlovni bekor qilish">
+              <Icons.X />
             </button>
           </div>
         )}
-
-        {loading ? (
-          <div className="loading-state">Yuklanmoqda...</div>
-        ) : paginatedData.length === 0 ? (
-          <div className="empty-state">
-            <Icons.Users />
-            <p>O'quvchilar topilmadi</p>
-          </div>
-        ) : (
-          <>
-            <div className="table-container">
-              <table className="table diagnostics-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 40 }}>
-                      <input
-                        type="checkbox"
-                        className="table-checkbox"
-                        checked={isAllSelected}
-                        onChange={toggleAll}
-                        aria-label="Barchasini tanlash"
-                      />
-                    </th>
-                    <th style={{ width: 50 }}>#</th>
-                    <th>
-                      <button
-                        type="button"
-                        className={`table-header-sortable ${sortColumn === 'studentName' ? 'active' : ''}`}
-                        onClick={() => toggleSort('studentName')}
-                      >
-                        O'quvchi
-                        <span className="sort-icon">{renderSortIcon('studentName')}</span>
-                      </button>
-                    </th>
-                    <th>
-                      <button
-                        type="button"
-                        className={`table-header-sortable ${sortColumn === 'className' ? 'active' : ''}`}
-                        onClick={() => toggleSort('className')}
-                      >
-                        Sinf
-                        <span className="sort-icon">{renderSortIcon('className')}</span>
-                      </button>
-                    </th>
-                    <th>Device ID</th>
-                    <th>Diagnostika</th>
-                    <th>Amal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedData.map((row, index) => {
-                    const liveState = liveStateByStudent[row.studentId];
-                    const effectiveByDevice = liveState?.byDeviceId || mapBackendStatus(row);
-                    const statusList = backendDevices.map(
-                      (device) => effectiveByDevice[device.id] || { status: 'UNSENT' as LiveStatus },
-                    );
-                    const summary = summarizeStatuses(statusList, Boolean(liveState?.running));
-
-                    return (
-                      <tr
-                        key={row.studentId}
-                        className={isSelected(row.studentId) ? 'selected' : ''}
-                      >
-                        <td>
-                          <input
-                            type="checkbox"
-                            className="table-checkbox"
-                            checked={isSelected(row.studentId)}
-                            onChange={() => toggleItem(row.studentId)}
-                            aria-label={`${row.studentName} ni tanlash`}
-                          />
-                        </td>
-                        <td>{(page - 1) * PAGE_SIZE + index + 1}</td>
-                        <td>{row.studentName}</td>
-                        <td>{row.className || '-'}</td>
-                        <td>{row.deviceStudentId || '-'}</td>
-                        <td>
-                          <div className={`diagnostics-hover ${openPopoverStudentId === row.studentId ? 'is-open' : ''}`}>
-                            <button
-                              type="button"
-                              className={`diagnostics-trigger badge ${summary.isOk ? 'badge-success' : 'badge-warning'}`}
-                              onClick={() =>
-                                setOpenPopoverStudentId((prev) => (prev === row.studentId ? null : row.studentId))
-                              }
-                              aria-expanded={openPopoverStudentId === row.studentId}
-                              aria-label={`${row.studentName} diagnostika detallarini ochish`}
-                            >
-                              {summary.text}
-                            </button>
-                            <div className="diagnostics-popover">
-                              <div className="diagnostics-popover-title">
-                                Qurilmalar holati
-                              </div>
-                              <div className="diagnostics-popover-list">
-                                {backendDevices.map((device) => {
-                                  const result = effectiveByDevice[device.id] || { status: 'UNSENT' as LiveStatus };
-                                  return (
-                                    <div key={`${row.studentId}-${device.id}`} className="diagnostics-popover-item">
-                                      <div className="diagnostics-popover-head">
-                                        <span className="diagnostics-device-name">{device.name}</span>
-                                        <span className={statusBadgeClass(result.status)}>
-                                          {statusLabel(result.status)}
-                                        </span>
-                                      </div>
-                                      <div className="diagnostics-popover-meta">
-                                        <span>Sabab: {statusReason(result.status, result.message)}</span>
-                                        <span>Vaqt: {formatDateTime(result.checkedAt)}</span>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="action-buttons">
-                            <button
-                              className="button button-secondary button-compact"
-                              onClick={() => runLiveCheck(row)}
-                              disabled={Boolean(liveState?.running)}
-                            >
-                              <Icons.Refresh /> {liveState?.running ? 'Tekshirilmoqda' : 'Tekshir'}
-                            </button>
-                            <button
-                              className="btn-icon btn-primary"
-                              onClick={() => startEdit(row)}
-                              aria-label={`${row.studentName} ni tahrirlash`}
-                              title="Tahrirlash"
-                            >
-                              <Icons.Edit />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              page={page}
-              pageSize={PAGE_SIZE}
-              total={total}
-              onChange={setPage}
-            />
-          </>
-        )}
+        
+        <DataTable
+          data={paginatedRows}
+          columns={columns}
+          loading={loading}
+          rowKey="studentId"
+          selectable
+          selectedKeys={selectedKeys}
+        onSelectionChange={toggleItem as any}
+        sortColumn={sortColumn as string}
+        sortDirection={sortDirection}
+        onSort={toggleSort as any}
+      />
+        
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={sortedData.length}
+          onChange={setPage}
+        />
       </div>
     </div>
   );
