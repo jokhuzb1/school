@@ -98,7 +98,7 @@ export function AddStudentsPage() {
           }
           try {
             const result = await testDeviceConnection(localDevice.id);
-            return { backendId: device.id, status: result.ok ? 'online' : 'offline' };
+            return { backendId: device.id, status: (result.ok ? 'online' : 'offline') as DeviceStatus };
           } catch (err) {
             return { backendId: device.id, status: 'offline' as DeviceStatus };
           }

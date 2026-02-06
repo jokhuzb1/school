@@ -22,6 +22,53 @@ function formatStudentName(student: StudentRow): string {
   return parts.join(' ').trim();
 }
 
+function normalizeSaveError(err: unknown): string {
+  const raw = (err instanceof Error ? err.message : String(err || 'Xato'))
+    .replace(/^Error:\s*/i, '')
+    .trim();
+
+  let message = raw;
+  const backendPrefix = 'Backend provisioning failed:';
+  if (message.startsWith(backendPrefix)) {
+    message = message.slice(backendPrefix.length).trim();
+  }
+
+  if (message.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(message);
+      if (typeof parsed?.error === 'string' && parsed.error.trim()) {
+        message = parsed.error.trim();
+      } else if (typeof parsed?.message === 'string' && parsed.message.trim()) {
+        message = parsed.message.trim();
+      }
+    } catch {
+      // keep raw message when not valid JSON
+    }
+  }
+
+  const lower = message.toLowerCase();
+  if (lower.includes('unknown argument `firstname`') || lower.includes('unknown argument `lastname`')) {
+    return "Server sxemasi yangilanmagan (firstName/lastName). Backendni yangilash kerak.";
+  }
+  if (lower.includes('studentprovisioning') && lower.includes('does not exist')) {
+    return "Server migratsiyasi toliq emas (StudentProvisioning jadvali topilmadi).";
+  }
+  if (lower.includes('duplicate student in class')) {
+    return "Bu sinfda shu ism-familiyali oquvchi allaqachon mavjud.";
+  }
+  if (lower.includes('class not found')) {
+    return "Tanlangan sinf topilmadi.";
+  }
+  if (lower.includes('unauthorized')) {
+    return "Backendga kirish rad etildi (Unauthorized). Login yoki tokenni tekshiring.";
+  }
+  if (lower.includes('invalid `tx.student.findfirst()` invocation')) {
+    return "Serverda student tekshiruv querysi ishlamadi. Backend loglarini tekshiring.";
+  }
+
+  return message || 'Nomalum xato';
+}
+
 export function useStudentTable(): UseStudentTableReturn {
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -189,14 +236,15 @@ export function useStudentTable(): UseStudentTableReturn {
         s.id === id ? { ...s, status: 'success' as const } : s
       ));
     } catch (err) {
+      const normalizedMessage = normalizeSaveError(err);
       setStudents(prev => prev.map(s => 
         s.id === id ? { 
           ...s, 
           status: 'error' as const, 
-          error: String(err) 
+          error: normalizedMessage,
         } : s
       ));
-      throw err;
+      throw new Error(normalizedMessage);
     }
   }, [students]);
 

@@ -80,12 +80,14 @@ export function DevicesPage() {
     if (!schoolId) return;
     setBackendLoading(true);
     try {
+      const localCredentials =
+        credentials.length > 0 ? credentials : await fetchDevices().catch(() => []);
       const data = await fetchSchoolDevices(schoolId);
       setBackendDevices(data);
       // Agar eski credentiallarda backendId yo'q bo'lsa, deviceId orqali bog'lab qo'yamiz
-      if (credentials.length > 0) {
+      if (localCredentials.length > 0) {
         const byDeviceId = new Map<string, DeviceConfig>();
-        credentials.forEach((device) => {
+        localCredentials.forEach((device) => {
           if (device.deviceId) {
             byDeviceId.set(normalize(device.deviceId), device);
           }
@@ -105,13 +107,10 @@ export function DevicesPage() {
             toUpdate.map(({ backend, match }) =>
               updateDevice(match.id, {
                 backendId: backend.id,
-                name: match.name,
                 host: match.host,
-                location: match.location,
                 port: match.port,
                 username: match.username,
                 password: match.password,
-                deviceType: match.deviceType,
                 deviceId: match.deviceId,
               }),
             ),
@@ -170,9 +169,10 @@ export function DevicesPage() {
     setLoading(true);
 
     try {
+      const isCredentialsOnlyMode = isCredentialsModalOpen && !isModalOpen;
       const trimmedName = formData.name.trim();
       const trimmedDeviceId = formData.deviceId.trim();
-      if (!trimmedName) {
+      if (!isCredentialsOnlyMode && !trimmedName) {
         addToast('Qurilma nomi majburiy', 'error');
         return;
       }
@@ -185,36 +185,56 @@ export function DevicesPage() {
       }
 
       let backendDevice: SchoolDeviceInfo | null = null;
-      if (editingBackendId) {
-        backendDevice = await updateSchoolDevice(editingBackendId, {
-          name: trimmedName,
-          deviceId: trimmedDeviceId || undefined,
-          type: formData.deviceType,
-          location: formData.location.trim() || undefined,
-        });
-        addToast('Qurilma yangilandi', 'success');
-      } else {
-        if (!trimmedDeviceId) {
-          addToast('Device ID majburiy', 'error');
+      if (isCredentialsOnlyMode) {
+        backendDevice = backendDevices.find((item) => item.id === editingBackendId) || null;
+        if (!backendDevice) {
+          addToast('Qurilma topilmadi', 'error');
           return;
         }
-        backendDevice = await createSchoolDevice(schoolId, {
-          name: trimmedName,
-          deviceId: trimmedDeviceId,
-          type: formData.deviceType,
-          location: formData.location.trim() || undefined,
-        });
-        addToast('Qurilma qo\'shildi', 'success');
+      } else {
+        if (editingBackendId) {
+          backendDevice = await updateSchoolDevice(editingBackendId, {
+            name: trimmedName,
+            deviceId: trimmedDeviceId || undefined,
+            type: formData.deviceType,
+            location: formData.location.trim() || undefined,
+          });
+          addToast('Qurilma yangilandi', 'success');
+        } else {
+          if (!trimmedDeviceId) {
+            addToast('Device ID majburiy', 'error');
+            return;
+          }
+          backendDevice = await createSchoolDevice(schoolId, {
+            name: trimmedName,
+            deviceId: trimmedDeviceId,
+            type: formData.deviceType,
+            location: formData.location.trim() || undefined,
+          });
+          addToast('Qurilma qo\'shildi', 'success');
+        }
+        await loadBackendDevices();
       }
-
-      await loadBackendDevices();
 
       const credentialsProvided =
         formData.host.trim() && formData.username.trim() && formData.password.trim();
+      const hostKey = formData.host.trim().toLowerCase();
+      const usernameKey = formData.username.trim().toLowerCase();
 
       const existingLocal =
         (editingLocalId ? credentials.find((item) => item.id === editingLocalId) : null) ||
-        (backendDevice ? getCredentialsForBackend(backendDevice) : undefined);
+        (backendDevice ? getCredentialsForBackend(backendDevice) : undefined) ||
+        credentials.find((item) => {
+          const sameBackend = backendDevice ? item.backendId === backendDevice.id : false;
+          const unlinked = !item.backendId;
+          const endpointMatch =
+            hostKey.length > 0 &&
+            usernameKey.length > 0 &&
+            item.host.trim().toLowerCase() === hostKey &&
+            item.port === formData.port &&
+            item.username.trim().toLowerCase() === usernameKey;
+          return (sameBackend || unlinked) && endpointMatch;
+        });
 
       if (credentialsProvided && backendDevice) {
         let savedLocal: DeviceConfig | null = null;
@@ -223,13 +243,10 @@ export function DevicesPage() {
         } else {
           const payload: Omit<DeviceConfig, 'id'> = {
             backendId: backendDevice.id,
-            name: backendDevice.name,
             host: formData.host.trim(),
-            location: formData.location.trim() || undefined,
             port: formData.port,
             username: formData.username.trim(),
             password: formData.password,
-            deviceType: backendDevice.type || formData.deviceType,
             deviceId: backendDevice.deviceId || trimmedDeviceId || undefined,
           };
 
@@ -258,13 +275,10 @@ export function DevicesPage() {
                 if (savedLocal.deviceId !== test.deviceId || savedLocal.backendId !== backendDevice.id) {
                   await updateDevice(savedLocal.id, {
                     backendId: backendDevice.id,
-                    name: savedLocal.name,
                     host: savedLocal.host,
-                    location: savedLocal.location,
                     port: savedLocal.port,
                     username: savedLocal.username,
                     password: savedLocal.password,
-                    deviceType: savedLocal.deviceType,
                     deviceId: test.deviceId,
                   });
                 }
@@ -305,20 +319,20 @@ export function DevicesPage() {
 
   const openEditModal = (device: SchoolDeviceInfo) => {
     const local = getCredentialsForBackend(device);
-    setEditingBackendId(device.id);
-    setEditingLocalId(local?.id || null);
-    setIsModalOpen(true);
-    setFormData({
-      name: device.name,
-      host: local?.host || '',
-      location: device.location || local?.location || '',
-      port: local?.port || 80,
-      username: local?.username || '',
-      password: local?.password || '',
-      deviceType: device.type || local?.deviceType || 'ENTRANCE',
-      deviceId: device.deviceId || local?.deviceId || '',
-    });
-  };
+      setEditingBackendId(device.id);
+      setEditingLocalId(local?.id || null);
+      setIsModalOpen(true);
+      setFormData({
+        name: device.name,
+        host: local?.host || '',
+        location: device.location || '',
+        port: local?.port || 80,
+        username: local?.username || '',
+        password: local?.password || '',
+        deviceType: device.type || 'ENTRANCE',
+        deviceId: device.deviceId || local?.deviceId || '',
+      });
+    };
 
   const openCredentialsModal = (device: SchoolDeviceInfo) => {
     const local = getCredentialsForBackend(device);
@@ -328,11 +342,11 @@ export function DevicesPage() {
     setFormData({
       name: device.name,
       host: local?.host || '',
-      location: device.location || local?.location || '',
+      location: device.location || '',
       port: local?.port || 80,
       username: local?.username || '',
       password: local?.password || '',
-      deviceType: device.type || local?.deviceType || 'ENTRANCE',
+      deviceType: device.type || 'ENTRANCE',
       deviceId: device.deviceId || local?.deviceId || '',
     });
   };

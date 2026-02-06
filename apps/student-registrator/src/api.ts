@@ -5,14 +5,17 @@ import { invoke } from '@tauri-apps/api';
 export interface DeviceConfig {
   id: string;
   backendId?: string | null;
-  name: string;
+  // Legacy UI compatibility. Metadata source-of-truth is backend.
+  name?: string;
   host: string;
-  location?: string | null;
+  // Legacy UI compatibility. Metadata source-of-truth is backend.
+  location?: string;
   port: number;
   username: string;
   password: string;
-  deviceId?: string;
+  // Legacy UI compatibility. Metadata source-of-truth is backend.
   deviceType?: string;
+  deviceId?: string | null;
   credentialsUpdatedAt?: string | null;
   credentialsExpiresAt?: string | null;
 }
@@ -300,15 +303,12 @@ export async function createDevice(
   device: Omit<DeviceConfig, 'id'>,
 ): Promise<DeviceConfig> {
   return invoke<DeviceConfig>('create_device', {
-    backend_id: device.backendId ?? null,
-    name: device.name,
+    backendId: device.backendId ?? null,
     host: device.host,
-    location: device.location,
     port: device.port,
     username: device.username,
     password: device.password,
-    device_type: device.deviceType,
-    device_id: device.deviceId,
+    deviceId: device.deviceId,
   });
 }
 
@@ -318,15 +318,12 @@ export async function updateDevice(
 ): Promise<DeviceConfig> {
   return invoke<DeviceConfig>('update_device', {
     id,
-    backend_id: device.backendId ?? null,
-    name: device.name,
+    backendId: device.backendId ?? null,
     host: device.host,
-    location: device.location,
     port: device.port,
     username: device.username,
     password: device.password,
-    device_type: device.deviceType,
-    device_id: device.deviceId,
+    deviceId: device.deviceId,
   });
 }
 

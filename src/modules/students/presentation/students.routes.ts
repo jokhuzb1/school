@@ -60,6 +60,12 @@ function splitFullName(fullName: string): { firstName: string; lastName: string 
   };
 }
 
+const STUDENT_HAS_SPLIT_NAME_FIELDS = (() => {
+  const model = Prisma.dmmf.datamodel.models.find((m) => m.name === "Student");
+  const fields = new Set((model?.fields || []).map((f) => f.name));
+  return fields.has("firstName") && fields.has("lastName");
+})();
+
 async function logProvisioningEvent(params: {
   schoolId: string;
   studentId?: string | null;
@@ -1240,14 +1246,11 @@ export default async function (fastify: FastifyInstance) {
             providedDeviceStudentId !== "" ? providedDeviceStudentId : null;
 
           if (classId) {
+            const whereByName: Prisma.StudentWhereInput = STUDENT_HAS_SPLIT_NAME_FIELDS
+              ? { schoolId, classId, firstName, lastName, isActive: true }
+              : { schoolId, classId, name: fullName, isActive: true };
             const existingByName = await tx.student.findFirst({
-              where: {
-                schoolId,
-                classId,
-                firstName,
-                lastName,
-                isActive: true,
-              },
+              where: whereByName,
               select: { id: true },
             });
             if (existingByName && existingByName.id !== studentId) {
@@ -1286,48 +1289,58 @@ export default async function (fastify: FastifyInstance) {
               deviceStudentId ||
               (await generateDeviceStudentId(tx, schoolId));
 
+            const updateData: Prisma.StudentUncheckedUpdateInput = {
+              name: fullName,
+              classId,
+              parentName: payloadFatherName || null,
+              parentPhone: studentPayload.parentPhone || null,
+              deviceStudentId,
+              isActive: true,
+            };
+            if (STUDENT_HAS_SPLIT_NAME_FIELDS) {
+              updateData.firstName = firstName;
+              updateData.lastName = lastName;
+              updateData.fatherName = payloadFatherName || null;
+            }
+
             studentRecord = await tx.student.update({
               where: { id: existingStudent.id },
-              data: {
-                name: fullName,
-                firstName,
-                lastName,
-                fatherName: payloadFatherName || null,
-                classId,
-                parentName: payloadFatherName || null,
-                parentPhone: studentPayload.parentPhone || null,
-                deviceStudentId,
-                isActive: true,
-              },
+              data: updateData,
             });
           } else {
             deviceStudentId =
               deviceStudentId || (await generateDeviceStudentId(tx, schoolId));
+
+            const upsertUpdateData: Prisma.StudentUncheckedUpdateInput = {
+              name: fullName,
+              classId,
+              parentName: payloadFatherName || null,
+              parentPhone: studentPayload.parentPhone || null,
+              isActive: true,
+            };
+            const upsertCreateData: Prisma.StudentUncheckedCreateInput = {
+              name: fullName,
+              classId,
+              parentName: payloadFatherName || null,
+              parentPhone: studentPayload.parentPhone || null,
+              deviceStudentId,
+              schoolId,
+            };
+            if (STUDENT_HAS_SPLIT_NAME_FIELDS) {
+              upsertUpdateData.firstName = firstName;
+              upsertUpdateData.lastName = lastName;
+              upsertUpdateData.fatherName = payloadFatherName || null;
+              upsertCreateData.firstName = firstName;
+              upsertCreateData.lastName = lastName;
+              upsertCreateData.fatherName = payloadFatherName || null;
+            }
+
             studentRecord = await tx.student.upsert({
               where: {
                 schoolId_deviceStudentId: { schoolId, deviceStudentId },
               },
-              update: {
-                name: fullName,
-                firstName,
-                lastName,
-                fatherName: payloadFatherName || null,
-                classId,
-                parentName: payloadFatherName || null,
-                parentPhone: studentPayload.parentPhone || null,
-                isActive: true,
-              },
-              create: {
-                name: fullName,
-                firstName,
-                lastName,
-                fatherName: payloadFatherName || null,
-                classId,
-                parentName: payloadFatherName || null,
-                parentPhone: studentPayload.parentPhone || null,
-                deviceStudentId,
-                schoolId,
-              },
+              update: upsertUpdateData,
+              create: upsertCreateData,
             });
           }
 

@@ -6,7 +6,7 @@ use crate::types::{DeviceConfig, DeviceConnectionResult, RegisterDeviceResult, R
 use crate::api::ApiClient;
 use chrono::{Datelike, Local, Timelike, Utc, Duration};
 use uuid::Uuid;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use serde_json::Value;
 
 const MAX_FACE_IMAGE_BYTES: usize = 200 * 1024;
@@ -36,6 +36,15 @@ fn is_credentials_expired(device: &DeviceConfig) -> bool {
     false
 }
 
+fn device_label(device: &DeviceConfig) -> String {
+    if let Some(backend_id) = device.backend_id.as_ref() {
+        if !backend_id.trim().is_empty() {
+            return format!("Backend {}", backend_id);
+        }
+    }
+    format!("{}:{}", device.host, device.port)
+}
+
 // ============ Device Management Commands ============
 
 #[tauri::command]
@@ -45,18 +54,34 @@ pub async fn get_devices() -> Result<Vec<DeviceConfig>, String> {
 
 #[tauri::command]
 pub async fn create_device(
-    name: String,
+    backend_id: Option<String>,
     host: String,
-    location: Option<String>,
     port: u16,
     username: String,
     password: String,
-    device_type: Option<String>,
     device_id: Option<String>,
-    backend_id: Option<String>,
 ) -> Result<DeviceConfig, String> {
     let mut devices = load_devices();
     
+    let backend_id = backend_id
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
+    if let Some(existing) = devices.iter_mut().find(|d| d.backend_id == backend_id && backend_id.is_some()) {
+        let now = Utc::now();
+        let expires = now + Duration::days(30);
+        existing.host = host.trim().to_string();
+        existing.port = port;
+        existing.username = username.trim().to_string();
+        existing.password = password;
+        existing.device_id = device_id;
+        existing.credentials_updated_at = Some(now.to_rfc3339());
+        existing.credentials_expires_at = Some(expires.to_rfc3339());
+        let saved = existing.clone();
+        save_devices(&devices)?;
+        return Ok(saved);
+    }
+
     if devices.len() >= 6 {
         return Err("Maximum 6 devices allowed".to_string());
     }
@@ -66,15 +91,12 @@ pub async fn create_device(
     let device = DeviceConfig {
         id: Uuid::new_v4().to_string(),
         backend_id,
-        name,
-        host,
-        location,
+        host: host.trim().to_string(),
         port,
-        username,
+        username: username.trim().to_string(),
         password,
         credentials_updated_at: Some(now.to_rfc3339()),
         credentials_expires_at: Some(expires.to_rfc3339()),
-        device_type,
         device_id,
     };
 
@@ -87,15 +109,12 @@ pub async fn create_device(
 #[tauri::command]
 pub async fn update_device(
     id: String,
-    name: String,
+    backend_id: Option<String>,
     host: String,
-    location: Option<String>,
     port: u16,
     username: String,
     password: String,
-    device_type: Option<String>,
     device_id: Option<String>,
-    backend_id: Option<String>,
 ) -> Result<DeviceConfig, String> {
     let mut devices = load_devices();
     
@@ -107,15 +126,12 @@ pub async fn update_device(
     let device = DeviceConfig {
         id,
         backend_id: backend_id.or_else(|| devices[index].backend_id.clone()),
-        name,
-        host,
-        location: location.or_else(|| devices[index].location.clone()),
+        host: host.trim().to_string(),
         port,
-        username,
+        username: username.trim().to_string(),
         password,
         credentials_updated_at: Some(now.to_rfc3339()),
         credentials_expires_at: Some(expires.to_rfc3339()),
-        device_type: device_type.or_else(|| devices[index].device_type.clone()),
         device_id: device_id.or_else(|| devices[index].device_id.clone()),
     };
     devices[index] = device.clone();
@@ -211,6 +227,7 @@ pub async fn register_student(
     let mut provisioning_id: Option<String> = None;
     let mut api_client: Option<ApiClient> = None;
     let mut backend_device_map: HashMap<String, String> = HashMap::new();
+    let mut target_backend_ids: HashSet<String> = HashSet::new();
 
     if backend_url.is_some() && school_id.is_none() {
         return Err("schoolId is required when backendUrl is set".to_string());
@@ -242,6 +259,7 @@ pub async fn register_student(
         if let Some(targets) = provisioning.target_devices.as_ref() {
             for device in targets {
                 backend_device_map.insert(device.device_id.clone(), device.id.clone());
+                target_backend_ids.insert(device.id.clone());
             }
         }
         api_client = Some(client);
@@ -258,23 +276,40 @@ pub async fn register_student(
     let mut devices_changed = false;
 
     for device in devices.iter_mut() {
+        let selected_by_backend_id = if target_backend_ids.is_empty() {
+            true
+        } else {
+            device
+                .backend_id
+                .as_ref()
+                .map(|id| target_backend_ids.contains(id))
+                .unwrap_or(false)
+        };
+        if !selected_by_backend_id && !target_backend_ids.is_empty() {
+            let selected_by_legacy_device_id = device
+                .device_id
+                .as_ref()
+                .and_then(|id| backend_device_map.get(id))
+                .is_some();
+            if !selected_by_legacy_device_id {
+                continue;
+            }
+        }
+
         if is_credentials_expired(device) {
             let external_device_id = device.device_id.as_deref();
-            if !backend_device_map.is_empty() {
-                if external_device_id.is_none() || !backend_device_map.contains_key(external_device_id.unwrap()) {
-                    continue;
-                }
-            }
+            let backend_device_id = device
+                .backend_id
+                .as_deref()
+                .or_else(|| external_device_id.and_then(|id| backend_device_map.get(id).map(|s| s.as_str())));
             let connection = DeviceConnectionResult {
                 ok: false,
                 message: Some("Ulanish sozlamalari muddati tugagan".to_string()),
                 device_id: device.device_id.clone(),
             };
             if let (Some(api), Some(pid)) = (api_client.as_ref(), provisioning_id.as_ref()) {
-                let backend_device_id = external_device_id
-                    .and_then(|id| backend_device_map.get(id))
-                    .map(|s| s.as_str());
-                let device_name = Some(device.name.as_str());
+                let device_display_name = device_label(device);
+                let device_name = Some(device_display_name.as_str());
                 let device_location = Some(device.host.as_str());
                 let _ = api
                     .report_device_result(
@@ -292,7 +327,7 @@ pub async fn register_student(
             }
             results.push(RegisterDeviceResult {
                 device_id: device.id.clone(),
-                device_name: device.name.clone(),
+                device_name: device_label(device),
                 connection,
                 user_create: None,
                 face_upload: None,
@@ -312,25 +347,17 @@ pub async fn register_student(
                 }
             }
         }
-        let backend_device_id = connection
-            .device_id
-            .as_ref()
-            .and_then(|id| backend_device_map.get(id))
-            .map(|s| s.as_str());
         let external_device_id = connection
             .device_id
             .as_deref()
             .or(device.device_id.as_deref());
-        let device_name = Some(device.name.as_str());
+        let backend_device_id = device
+            .backend_id
+            .as_deref()
+            .or_else(|| external_device_id.and_then(|id| backend_device_map.get(id).map(|s| s.as_str())));
+        let device_display_name = device_label(device);
+        let device_name = Some(device_display_name.as_str());
         let device_location = Some(device.host.as_str());
-
-        if !backend_device_map.is_empty() {
-            if let Some(external_id) = external_device_id {
-                if !backend_device_map.contains_key(external_id) {
-                    continue;
-                }
-            }
-        }
 
         if !connection.ok {
             if let (Some(api), Some(pid)) = (api_client.as_ref(), provisioning_id.as_ref()) {
@@ -350,7 +377,7 @@ pub async fn register_student(
             }
             results.push(RegisterDeviceResult {
                 device_id: device.id.clone(),
-                device_name: device.name.clone(),
+                device_name: device_label(device),
                 connection,
                 user_create: None,
                 face_upload: None,
@@ -385,7 +412,7 @@ pub async fn register_student(
             }
             results.push(RegisterDeviceResult {
                 device_id: device.id.clone(),
-                device_name: device.name.clone(),
+                device_name: device_label(device),
                 connection,
                 user_create: Some(user_create),
                 face_upload: None,
@@ -420,7 +447,7 @@ pub async fn register_student(
 
         results.push(RegisterDeviceResult {
             device_id: device.id.clone(),
-            device_name: device.name.clone(),
+            device_name: device_label(device),
             connection,
             user_create: Some(user_create),
             face_upload: Some(face_upload),
