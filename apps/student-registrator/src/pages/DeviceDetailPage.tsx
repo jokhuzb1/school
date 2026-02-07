@@ -4,11 +4,13 @@ import {
   BACKEND_URL,
   cloneDeviceToDevice,
   cloneStudentsToDevice,
+  commitDeviceImport,
   createImportAuditLog,
-  createSchoolStudent,
   deleteUser,
   fetchDevices,
   fetchClasses,
+  getImportJob,
+  getImportMetrics,
   fetchStudentByDeviceStudentId,
   getDeviceCapabilities,
   getDeviceConfiguration,
@@ -19,7 +21,9 @@ import {
   getAuthUser,
   getUserFace,
   getWebhookInfo,
+  previewDeviceImport,
   recreateUser,
+  retryImportJob,
   rotateWebhookSecret,
   testDeviceConnection,
   testWebhookEndpoint,
@@ -49,6 +53,13 @@ type ImportRow = {
   hasFace: boolean;
   studentId?: string;
   faceSynced?: boolean;
+  faceError?: string;
+  syncResults?: Array<{
+    backendDeviceId: string;
+    deviceName?: string;
+    status: string;
+    lastError?: string | null;
+  }>;
   status?: 'pending' | 'saved' | 'error';
   error?: string;
 };
@@ -66,6 +77,16 @@ type ImportJob = {
   success: number;
   failed: number;
   synced: number;
+};
+
+type ImportPreview = {
+  total: number;
+  createCount: number;
+  updateCount: number;
+  skipCount: number;
+  invalidCount: number;
+  duplicateCount: number;
+  classErrorCount: number;
 };
 
 export function DeviceDetailPage() {
@@ -106,6 +127,16 @@ export function DeviceDetailPage() {
   const [importPullFace, setImportPullFace] = useState(true);
   const [importJob, setImportJob] = useState<ImportJob | null>(null);
   const [importAuditTrail, setImportAuditTrail] = useState<Array<{ at: string; stage: string; message: string }>>([]);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [importMetrics, setImportMetrics] = useState<{
+    totalRuns: number;
+    totalSuccess: number;
+    totalFailed: number;
+    totalSynced: number;
+    successRate: number;
+    retryRate: number;
+    meanLatencyMs: number;
+  } | null>(null);
   const importIdempotencyRef = useRef<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [sourceCloneId, setSourceCloneId] = useState<string>('');
@@ -506,29 +537,30 @@ export function DeviceDetailPage() {
     try {
       const classes = await fetchClasses(auth.schoolId);
       setAvailableClasses(classes);
-      setImportRows(
-        users.map((u) => {
-          const nameParts = splitName(u.name || '');
-          return {
-            employeeNo: u.employeeNo || '',
-            name: u.name || '',
-            firstName: nameParts.firstName,
-            lastName: nameParts.lastName,
-            fatherName: '',
-            gender: (String(u.gender || '').toLowerCase().startsWith('f') ? 'FEMALE' : 'MALE'),
-            classId: '',
-            parentPhone: '',
-            hasFace: (u.numOfFace || 0) > 0,
-            status: 'pending',
-          };
-        }),
-      );
+      const nextRows = users.map((u) => {
+        const nameParts = splitName(u.name || '');
+        return {
+          employeeNo: u.employeeNo || '',
+          name: u.name || '',
+          firstName: nameParts.firstName,
+          lastName: nameParts.lastName,
+          fatherName: '',
+          gender: (String(u.gender || '').toLowerCase().startsWith('f') ? 'FEMALE' : 'MALE'),
+          classId: '',
+          parentPhone: '',
+          hasFace: (u.numOfFace || 0) > 0,
+          status: 'pending',
+        } as ImportRow;
+      });
+      setImportRows(nextRows);
       setImportSyncMode('none');
       setImportSelectedDeviceIds(schoolDevice?.id ? [schoolDevice.id] : []);
       setImportPullFace(true);
       setImportJob(null);
       setImportAuditTrail([]);
+      setImportPreview(null);
       setIsImportOpen(true);
+      await Promise.all([refreshImportPreview(nextRows), loadImportMetrics()]);
       await pushImportAudit('DEVICE_IMPORT_WIZARD_OPEN', 'Import wizard opened', {
         users: users.length,
         sourceDeviceId: schoolDevice?.id || null,
@@ -570,6 +602,7 @@ export function DeviceDetailPage() {
 
   const validateImportRows = (): { ok: boolean; rows: ImportRow[]; errors: number } => {
     const seen = new Set<string>();
+    const classSet = new Set(availableClasses.map((c) => c.id));
     let errors = 0;
     const next = importRows.map((row) => {
       let error = '';
@@ -578,6 +611,8 @@ export function DeviceDetailPage() {
         error = 'Majburiy maydonlar to\'liq emas';
       } else if (seen.has(key)) {
         error = 'Duplicate employeeNo import ichida';
+      } else if (!classSet.has(row.classId)) {
+        error = 'Class topilmadi';
       }
       seen.add(key);
       if (error) errors += 1;
@@ -607,6 +642,48 @@ export function DeviceDetailPage() {
     }
   };
 
+  const loadImportMetrics = async () => {
+    const auth = getAuthUser();
+    if (!auth?.schoolId) return;
+    try {
+      const metrics = await getImportMetrics(auth.schoolId);
+      setImportMetrics(metrics);
+    } catch {
+      setImportMetrics(null);
+    }
+  };
+
+  const refreshImportPreview = async (rowsOverride?: ImportRow[]) => {
+    const auth = getAuthUser();
+    if (!auth?.schoolId) return;
+    const baseRows = rowsOverride || importRows;
+    try {
+      const preview = await previewDeviceImport(
+        auth.schoolId,
+        baseRows.map((row) => ({
+          employeeNo: row.employeeNo,
+          firstName: row.firstName,
+          lastName: row.lastName,
+          fatherName: row.fatherName || undefined,
+          classId: row.classId,
+          parentPhone: row.parentPhone || undefined,
+          gender: row.gender,
+        })),
+      );
+      setImportPreview({
+        total: preview.total,
+        createCount: preview.createCount,
+        updateCount: preview.updateCount,
+        skipCount: preview.skipCount,
+        invalidCount: preview.invalidCount,
+        duplicateCount: preview.duplicateCount,
+        classErrorCount: preview.classErrorCount,
+      });
+    } catch {
+      setImportPreview(null);
+    }
+  };
+
   const processImportRows = async (targetIndexes?: number[], retryOnly = false) => {
     const auth = getAuthUser();
     if (!auth?.schoolId) {
@@ -629,13 +706,33 @@ export function DeviceDetailPage() {
       return;
     }
 
+    const queue = (targetIndexes && targetIndexes.length > 0)
+      ? targetIndexes
+      : importRows.map((_, idx) => idx);
     const validation = validateImportRows();
     setImportRows(validation.rows);
-    if (!validation.ok) {
+    const invalidInQueue = queue.some((idx) => Boolean(validation.rows[idx]?.error));
+    if ((!retryOnly && !validation.ok) || invalidInQueue) {
       addToast(`Validation xatolari: ${validation.errors}`, 'error');
       return;
     }
 
+    if (retryOnly && importJob?.id) {
+      await retryImportJob(auth.schoolId, importJob.id).catch(() => undefined);
+    }
+
+    const commitRows = queue
+      .map((idx) => validation.rows[idx])
+      .filter(Boolean)
+      .map((row) => ({
+        employeeNo: row.employeeNo,
+        firstName: row.firstName,
+        lastName: row.lastName,
+        fatherName: row.fatherName || undefined,
+        classId: row.classId,
+        parentPhone: row.parentPhone || undefined,
+        gender: row.gender,
+      }));
     const targetDeviceIds = resolveImportTargetDeviceIds();
     const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     importIdempotencyRef.current = idempotencyKey;
@@ -661,39 +758,64 @@ export function DeviceDetailPage() {
       targetIndexes: targetIndexes || null,
     });
 
-    let success = 0;
-    let failed = 0;
-    let synced = 0;
-    const nextRows = [...importRows];
-
     try {
-      const queue = (targetIndexes && targetIndexes.length > 0)
-        ? targetIndexes
-        : nextRows.map((_, idx) => idx);
+      const commitResult = await commitDeviceImport(auth.schoolId, {
+        rows: commitRows,
+        idempotencyKey,
+        sourceDeviceId: schoolDevice?.id,
+        syncMode: importSyncMode,
+        targetDeviceIds,
+        retryMode: retryOnly,
+      });
+      if (commitResult.jobId) {
+        const remoteJob = await getImportJob(auth.schoolId, commitResult.jobId).catch(() => null);
+        if (remoteJob) {
+          setImportJob({
+            id: remoteJob.id,
+            status: remoteJob.status,
+            retryCount: remoteJob.retryCount,
+            startedAt: remoteJob.startedAt,
+            finishedAt: remoteJob.finishedAt || undefined,
+            lastError: remoteJob.lastError || undefined,
+            processed: remoteJob.processed,
+            success: remoteJob.success,
+            failed: remoteJob.failed,
+            synced: remoteJob.synced,
+          });
+        }
+      }
+      const nextRows = [...validation.rows];
+      const studentByEmployeeNo = new Map(
+        commitResult.students.map((student) => [String(student.deviceStudentId || ''), student]),
+      );
+
+      let success = 0;
+      let failed = 0;
+      let synced = 0;
       for (const i of queue) {
         const row = nextRows[i];
         if (!row) continue;
         try {
-          let existing: StudentProfileDetail | null = null;
-          try {
-            existing = await fetchStudentByDeviceStudentId(auth.schoolId, row.employeeNo);
-          } catch {
-            existing = null;
+          const student = studentByEmployeeNo.get(row.employeeNo);
+          if (!student?.id) {
+            throw new Error('Commit natijasida student topilmadi');
           }
 
-          let studentId = existing?.id || '';
           let faceImageBase64: string | undefined;
+          let faceError: string | undefined;
           if (importPullFace && row.hasFace && localDevice?.id) {
             try {
               const face = await getUserFace(localDevice.id, row.employeeNo);
               faceImageBase64 = face.imageBase64;
-            } catch {
-              // face sync is optional for import flow
+            } catch (err) {
+              faceError = err instanceof Error ? err.message : 'Face sync xato';
             }
           }
-
-          if (existing?.id) {
-            await updateStudentProfile(existing.id, {
+          if (faceError) {
+            throw new Error(`Face sync xato: ${faceError}`);
+          }
+          if (faceImageBase64) {
+            await updateStudentProfile(student.id, {
               firstName: row.firstName,
               lastName: row.lastName,
               fatherName: row.fatherName || undefined,
@@ -703,57 +825,61 @@ export function DeviceDetailPage() {
               deviceStudentId: row.employeeNo,
               faceImageBase64,
             });
-            studentId = existing.id;
-          } else {
-            const created = await createSchoolStudent(auth.schoolId, {
-              firstName: row.firstName,
-              lastName: row.lastName,
-              fatherName: row.fatherName || undefined,
-              classId: row.classId,
-              parentPhone: row.parentPhone || undefined,
-              gender: row.gender,
-              deviceStudentId: row.employeeNo,
-            });
-            studentId = created.id;
-            if (faceImageBase64) {
-              await updateStudentProfile(created.id, {
-                faceImageBase64,
-                classId: row.classId,
-                firstName: row.firstName,
-                lastName: row.lastName,
-                fatherName: row.fatherName || undefined,
-                parentPhone: row.parentPhone || undefined,
-                gender: row.gender,
-                deviceStudentId: row.employeeNo,
-              });
-            }
           }
 
-          if (studentId && targetDeviceIds.length > 0) {
-            const ok = await syncStudentToDevices(studentId, targetDeviceIds);
-            if (ok) synced += 1;
+          let syncResults: ImportRow["syncResults"] = [];
+          if (targetDeviceIds.length > 0) {
+            const syncResult = await syncStudentToDevices(student.id, targetDeviceIds);
+            syncResults = syncResult.perDeviceResults.map((item) => ({
+              backendDeviceId: item.backendDeviceId,
+              deviceName: item.deviceName,
+              status: item.status,
+              lastError: item.lastError,
+            }));
+            const hasSyncFailure =
+              !syncResult.ok ||
+              syncResults.some((item) => item.status.toUpperCase() !== 'SUCCESS');
+            if (hasSyncFailure) {
+              throw new Error(
+                syncResults
+                  .filter((item) => item.status.toUpperCase() !== 'SUCCESS')
+                  .map((item) => `${item.deviceName || item.backendDeviceId}: ${item.lastError || item.status}`)
+                  .join('; ') || 'Qurilmaga sync xato',
+              );
+            }
+            synced += 1;
           }
 
           nextRows[i] = {
             ...row,
-            studentId,
+            studentId: student.id,
             faceSynced: Boolean(faceImageBase64),
+            syncResults,
+            faceError: undefined,
             status: 'saved',
             error: undefined,
           };
           success += 1;
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Saqlashda xato';
-          nextRows[i] = { ...row, status: 'error', error: msg };
+          nextRows[i] = {
+            ...row,
+            status: 'error',
+            error: msg,
+          };
           failed += 1;
         }
-        setImportJob((prev) => prev ? ({
-          ...prev,
-          processed: prev.processed + 1,
-          success,
-          failed,
-          synced,
-        }) : prev);
+        setImportJob((prev) =>
+          prev
+            ? {
+                ...prev,
+                processed: prev.processed + 1,
+                success,
+                failed,
+                synced,
+              }
+            : prev,
+        );
       }
 
       setImportRows(nextRows);
@@ -776,10 +902,25 @@ export function DeviceDetailPage() {
         `Import yakunlandi: ${success} success, ${failed} failed, ${synced} sync`,
         failed > 0 ? 'error' : 'success',
       );
+      await Promise.all([refreshImportPreview(nextRows), loadImportMetrics()]);
       if (success > 0) {
         await loadUsers(true);
       }
       importIdempotencyRef.current = null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Importda xato';
+      setImportJob((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: 'FAILED',
+              finishedAt: new Date().toISOString(),
+              lastError: message,
+            }
+          : prev,
+      );
+      await pushImportAudit('DEVICE_IMPORT_FAIL', message);
+      addToast(message, 'error');
     } finally {
       setImportLoading(false);
     }
@@ -1347,7 +1488,36 @@ export function DeviceDetailPage() {
                 <span className="badge badge-success">Saved: {previewStats.done}</span>
                 <span className={`badge ${previewStats.failed > 0 ? 'badge-danger' : ''}`}>Failed: {previewStats.failed}</span>
                 <span className={`badge ${previewStats.invalid > 0 ? 'badge-danger' : ''}`}>Invalid: {previewStats.invalid}</span>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => refreshImportPreview()}
+                  disabled={importLoading}
+                >
+                  <Icons.Refresh /> Previewni yangilash
+                </button>
               </div>
+              {importPreview && (
+                <div className="device-item-meta" style={{ marginBottom: 8 }}>
+                  <span className="badge">Create: {importPreview.createCount}</span>
+                  <span className="badge">Update: {importPreview.updateCount}</span>
+                  <span className="badge">Skip: {importPreview.skipCount}</span>
+                  <span className={`badge ${importPreview.invalidCount > 0 ? 'badge-danger' : ''}`}>
+                    Invalid: {importPreview.invalidCount}
+                  </span>
+                  <span className={`badge ${importPreview.duplicateCount > 0 ? 'badge-danger' : ''}`}>
+                    Dup: {importPreview.duplicateCount}
+                  </span>
+                  <span className={`badge ${importPreview.classErrorCount > 0 ? 'badge-danger' : ''}`}>
+                    Class error: {importPreview.classErrorCount}
+                  </span>
+                </div>
+              )}
+              {importMetrics && (
+                <div className="notice" style={{ marginBottom: 8 }}>
+                  Metrics: success {(importMetrics.successRate * 100).toFixed(1)}% | retry {(importMetrics.retryRate * 100).toFixed(1)}% | mean latency {Math.round(importMetrics.meanLatencyMs)} ms
+                </div>
+              )}
               <div className="form-group" style={{ marginTop: 10 }}>
                 <label>Saqlash siyosati (Sync mode)</label>
                 <select
@@ -1458,6 +1628,27 @@ export function DeviceDetailPage() {
                             {row.status || 'pending'}
                           </span>
                           {row.error && <div className="text-xs text-danger">{row.error}</div>}
+                          {row.syncResults && row.syncResults.length > 0 && (
+                            <div className="text-xs">
+                              {row.syncResults.map((s) => (
+                                <div key={`${row.employeeNo}-${s.backendDeviceId}`}>
+                                  {(s.deviceName || s.backendDeviceId)}: {s.status}
+                                  {s.lastError ? ` (${s.lastError})` : ''}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {row.status === 'error' && (
+                            <button
+                              type="button"
+                              className="button button-secondary"
+                              style={{ marginTop: 6 }}
+                              onClick={() => processImportRows([idx], true)}
+                              disabled={importLoading}
+                            >
+                              Retry row
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

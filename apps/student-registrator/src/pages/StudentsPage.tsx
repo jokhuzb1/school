@@ -290,8 +290,8 @@ export function StudentsPage() {
 
       // Background sync to devices
       try {
-        const syncOk = await syncStudentToDevices(editingStudent.studentId);
-        if (syncOk) {
+        const syncResult = await syncStudentToDevices(editingStudent.studentId);
+        if (syncResult.ok) {
           addToast("Qurilmalar bilan sinxronizatsiya qilindi", 'success');
         } else {
           addToast("Qurilmalarga yuborishda xato yoki provisioning topilmadi", 'error');

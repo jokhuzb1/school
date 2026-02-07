@@ -31,6 +31,18 @@ import {
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import {
+  acquireImportLocks,
+  createImportJob,
+  getIdempotentResult,
+  getImportJob,
+  getImportMetrics,
+  incrementImportJobRetry,
+  recordImportMetrics,
+  releaseImportLocks,
+  setIdempotentResult,
+  updateImportJob,
+} from "../services/import-runtime.service";
 
 function normalizeHeader(value: string): string {
   return value
@@ -2289,6 +2301,482 @@ export default async function (fastify: FastifyInstance) {
     },
   );
 
+  fastify.post(
+    "/schools/:schoolId/device-import/preview",
+    { preHandler: [(fastify as any).authenticate] } as any,
+    async (request: any, reply) => {
+      try {
+        const { schoolId } = request.params as { schoolId: string };
+        const user = request.user;
+        const body = request.body || {};
+
+        requireRoles(user, ["SCHOOL_ADMIN"]);
+        requireSchoolScope(user, schoolId);
+
+        const rawRows = Array.isArray(body.rows) ? body.rows : [];
+        if (rawRows.length === 0) {
+          return reply.status(400).send({ error: "rows is required" });
+        }
+
+        const rows: Array<{
+          employeeNo: string;
+          firstName: string;
+          lastName: string;
+          classId: string;
+        }> = rawRows.map((item: any) => ({
+          employeeNo: String(item?.employeeNo || "").trim(),
+          firstName: normalizeNamePart(item?.firstName || ""),
+          lastName: normalizeNamePart(item?.lastName || ""),
+          classId: String(item?.classId || "").trim(),
+        }));
+
+        const classIds: string[] = Array.from(
+          new Set(rows.map((r) => r.classId).filter((v): v is string => Boolean(v))),
+        );
+        const employeeNos: string[] = Array.from(
+          new Set(rows.map((r) => r.employeeNo).filter((v): v is string => Boolean(v))),
+        );
+
+        const [classes, existing] = await Promise.all([
+          classIds.length === 0
+            ? []
+            : prisma.class.findMany({
+                where: { schoolId, id: { in: classIds } },
+                select: { id: true },
+              }),
+          employeeNos.length === 0
+            ? []
+            : prisma.student.findMany({
+                where: { schoolId, deviceStudentId: { in: employeeNos } },
+                select: { id: true, deviceStudentId: true },
+              }),
+        ]);
+
+        const classSet = new Set(classes.map((c) => c.id));
+        const existingMap = new Map(
+          existing.map((s) => [String(s.deviceStudentId || ""), s.id]),
+        );
+        const dupCounter = new Map<string, number>();
+        rows.forEach((r) =>
+          dupCounter.set(r.employeeNo, (dupCounter.get(r.employeeNo) || 0) + 1),
+        );
+
+        let createCount = 0;
+        let updateCount = 0;
+        let invalidCount = 0;
+        let duplicateCount = 0;
+        let classErrorCount = 0;
+
+        const previewRows = rows.map((row: {
+          employeeNo: string;
+          firstName: string;
+          lastName: string;
+          classId: string;
+        }) => {
+          const reasons: string[] = [];
+          if (!row.employeeNo || !row.firstName || !row.lastName || !row.classId) {
+            reasons.push("Majburiy maydonlar to'liq emas");
+          }
+          if ((dupCounter.get(row.employeeNo) || 0) > 1) {
+            reasons.push("Duplicate employeeNo");
+            duplicateCount += 1;
+          }
+          if (row.classId && !classSet.has(row.classId)) {
+            reasons.push("Class topilmadi");
+            classErrorCount += 1;
+          }
+
+          const existingStudentId = existingMap.get(row.employeeNo) || null;
+          const action =
+            reasons.length > 0
+              ? "INVALID"
+              : existingStudentId
+              ? "UPDATE"
+              : "CREATE";
+
+          if (action === "CREATE") createCount += 1;
+          if (action === "UPDATE") updateCount += 1;
+          if (action === "INVALID") invalidCount += 1;
+
+          return {
+            ...row,
+            action,
+            reasons,
+            existingStudentId,
+          };
+        });
+
+        return {
+          total: rows.length,
+          createCount,
+          updateCount,
+          skipCount: invalidCount,
+          invalidCount,
+          duplicateCount,
+          classErrorCount,
+          rows: previewRows,
+        };
+      } catch (err) {
+        return sendHttpError(reply, err);
+      }
+    },
+  );
+
+  fastify.post(
+    "/schools/:schoolId/device-import/commit",
+    { preHandler: [(fastify as any).authenticate] } as any,
+    async (request: any, reply) => {
+      const startedAtMs = Date.now();
+      let jobId: string | null = null;
+      let lockEmployeeNos: string[] = [];
+      let retryMode = false;
+      try {
+        const { schoolId } = request.params as { schoolId: string };
+        const user = request.user;
+        const body = request.body || {};
+
+        requireRoles(user, ["SCHOOL_ADMIN"]);
+        requireSchoolScope(user, schoolId);
+
+        const idempotencyKey = String(body.idempotencyKey || "").trim();
+        if (idempotencyKey) {
+          const cached = getIdempotentResult(schoolId, idempotencyKey);
+          if (cached) {
+            return { ...cached, idempotent: true };
+          }
+        }
+
+        const rawRows = Array.isArray(body.rows) ? body.rows : [];
+        if (rawRows.length === 0) {
+          return reply.status(400).send({ error: "rows is required" });
+        }
+
+        const rows: Array<{
+          employeeNo: string;
+          firstName: string;
+          lastName: string;
+          fatherName: string;
+          classId: string;
+          parentPhone: string;
+          gender: "MALE" | "FEMALE";
+        }> = rawRows.map((item: any) => ({
+          employeeNo: String(item?.employeeNo || "").trim(),
+          firstName: normalizeNamePart(item?.firstName || ""),
+          lastName: normalizeNamePart(item?.lastName || ""),
+          fatherName: normalizeNamePart(item?.fatherName || ""),
+          classId: String(item?.classId || "").trim(),
+          parentPhone: String(item?.parentPhone || "").trim(),
+          gender: normalizeGender(item?.gender || "MALE") || "MALE",
+        }));
+
+        const classIds: string[] = Array.from(
+          new Set(rows.map((r) => r.classId).filter((v): v is string => Boolean(v))),
+        );
+        const employeeNos: string[] = Array.from(
+          new Set(rows.map((r) => r.employeeNo).filter((v): v is string => Boolean(v))),
+        );
+        lockEmployeeNos = employeeNos;
+        retryMode = Boolean(body?.retryMode);
+
+        const lock = acquireImportLocks(schoolId, employeeNos);
+        if (!lock.ok) {
+          return reply
+            .status(409)
+            .send({ error: "Import lock conflict", conflicts: lock.conflicts });
+        }
+
+        const [classes, existing] = await Promise.all([
+          classIds.length === 0
+            ? []
+            : prisma.class.findMany({
+                where: { schoolId, id: { in: classIds } },
+                select: { id: true },
+              }),
+          employeeNos.length === 0
+            ? []
+            : prisma.student.findMany({
+                where: { schoolId, deviceStudentId: { in: employeeNos } },
+                select: {
+                  id: true,
+                  deviceStudentId: true,
+                  firstName: true,
+                  lastName: true,
+                  classId: true,
+                },
+              }),
+        ]);
+
+        const classSet = new Set(classes.map((c) => c.id));
+        const existingMap = new Map(
+          existing.map((s) => [String(s.deviceStudentId || ""), s]),
+        );
+        const dupCounter = new Map<string, number>();
+        rows.forEach((r) =>
+          dupCounter.set(r.employeeNo, (dupCounter.get(r.employeeNo) || 0) + 1),
+        );
+
+        const invalidRows = rows.filter((row: {
+          employeeNo: string;
+          firstName: string;
+          lastName: string;
+          classId: string;
+        }) => {
+          if (!row.employeeNo || !row.firstName || !row.lastName || !row.classId) {
+            return true;
+          }
+          if ((dupCounter.get(row.employeeNo) || 0) > 1) return true;
+          if (!classSet.has(row.classId)) return true;
+          return false;
+        });
+
+        if (invalidRows.length > 0) {
+          return reply.status(400).send({
+            error: "Validation failed",
+            invalidCount: invalidRows.length,
+          });
+        }
+
+        const created: Array<{ id: string; deviceStudentId: string | null }> = [];
+        const updated: Array<{ id: string; deviceStudentId: string | null }> = [];
+        const beforeAfter: Array<{
+          employeeNo: string;
+          before: any;
+          after: any;
+        }> = [];
+
+        const localJobId = crypto.randomUUID();
+        jobId = localJobId;
+        createImportJob({
+          id: localJobId,
+          schoolId,
+          totalRows: rows.length,
+        });
+        updateImportJob(localJobId, { status: "PROCESSING" as any });
+
+        const students = await prisma.$transaction(async (tx) => {
+          const out: Array<{
+            id: string;
+            deviceStudentId: string | null;
+            firstName: string;
+            lastName: string;
+          }> = [];
+          for (const row of rows) {
+            const existingStudent = existingMap.get(row.employeeNo);
+            const fullName = buildFullName(row.lastName, row.firstName);
+            const result = await tx.student.upsert({
+              where: {
+                schoolId_deviceStudentId: {
+                  schoolId,
+                  deviceStudentId: row.employeeNo,
+                },
+              },
+              update: {
+                name: fullName,
+                firstName: row.firstName,
+                lastName: row.lastName,
+                fatherName: row.fatherName || null,
+                classId: row.classId,
+                parentPhone: row.parentPhone || null,
+                gender: row.gender,
+                isActive: true,
+              },
+              create: {
+                schoolId,
+                deviceStudentId: row.employeeNo,
+                name: fullName,
+                firstName: row.firstName,
+                lastName: row.lastName,
+                fatherName: row.fatherName || null,
+                classId: row.classId,
+                parentPhone: row.parentPhone || null,
+                gender: row.gender,
+              },
+            });
+
+            beforeAfter.push({
+              employeeNo: row.employeeNo,
+              before: existingStudent
+                ? {
+                    id: existingStudent.id,
+                    firstName: existingStudent.firstName,
+                    lastName: existingStudent.lastName,
+                    classId: existingStudent.classId,
+                  }
+                : null,
+              after: {
+                id: result.id,
+                firstName: result.firstName,
+                lastName: result.lastName,
+                classId: result.classId,
+              },
+            });
+
+            if (existingStudent) {
+              updated.push({
+                id: result.id,
+                deviceStudentId: result.deviceStudentId,
+              });
+            } else {
+              created.push({
+                id: result.id,
+                deviceStudentId: result.deviceStudentId,
+              });
+            }
+            out.push({
+              id: result.id,
+              deviceStudentId: result.deviceStudentId,
+              firstName: result.firstName,
+              lastName: result.lastName,
+            });
+          }
+          return out;
+        });
+
+        const durationMs = Date.now() - startedAtMs;
+        updateImportJob(localJobId, {
+          status: "SUCCESS" as any,
+          processed: rows.length,
+          success: rows.length,
+          failed: 0,
+          synced: 0,
+          finishedAt: new Date(),
+        });
+        recordImportMetrics({
+          schoolId,
+          success: rows.length,
+          failed: 0,
+          synced: 0,
+          latencyMs: durationMs,
+          isRetry: retryMode,
+        });
+
+        const resultPayload = {
+          ok: true,
+          idempotent: false,
+          jobId: localJobId,
+          createdCount: created.length,
+          updatedCount: updated.length,
+          created,
+          updated,
+          students,
+        };
+
+        await logProvisioningEvent({
+          schoolId,
+          level: "INFO",
+          stage: "DEVICE_IMPORT_COMMIT",
+          status: "SUCCESS",
+          message: `Import commit done (${rows.length} rows)`,
+          payload: {
+            actorId: user?.sub || null,
+            actorRole: user?.role || null,
+            sourceDeviceId: body?.sourceDeviceId || null,
+            syncMode: body?.syncMode || "none",
+            targetDeviceIds: Array.isArray(body?.targetDeviceIds)
+              ? body.targetDeviceIds
+              : [],
+            jobId: localJobId,
+            createdCount: created.length,
+            updatedCount: updated.length,
+            beforeAfter: beforeAfter.slice(0, 200),
+          },
+        });
+
+        if (idempotencyKey) {
+          setIdempotentResult(schoolId, idempotencyKey, resultPayload);
+        }
+
+        return resultPayload;
+      } catch (err: any) {
+        if (jobId) {
+          updateImportJob(jobId, {
+            status: "FAILED" as any,
+            lastError: err?.message || "Import failed",
+            finishedAt: new Date(),
+          });
+        }
+        recordImportMetrics({
+          schoolId: (request.params as any)?.schoolId || "",
+          success: 0,
+          failed: 1,
+          synced: 0,
+          latencyMs: Date.now() - startedAtMs,
+          isRetry: retryMode,
+        });
+        return sendHttpError(reply, err);
+      } finally {
+        if ((request.params as any)?.schoolId && lockEmployeeNos.length > 0) {
+          releaseImportLocks((request.params as any).schoolId, lockEmployeeNos);
+        }
+      }
+    },
+  );
+
+  fastify.get(
+    "/schools/:schoolId/import-jobs/:jobId",
+    { preHandler: [(fastify as any).authenticate] } as any,
+    async (request: any, reply) => {
+      try {
+        const { schoolId, jobId } = request.params as {
+          schoolId: string;
+          jobId: string;
+        };
+        const user = request.user;
+        requireRoles(user, ["SCHOOL_ADMIN"]);
+        requireSchoolScope(user, schoolId);
+
+        const job = getImportJob(jobId);
+        if (!job || job.schoolId !== schoolId) {
+          return reply.status(404).send({ error: "Import job not found" });
+        }
+        return job;
+      } catch (err) {
+        return sendHttpError(reply, err);
+      }
+    },
+  );
+
+  fastify.post(
+    "/schools/:schoolId/import-jobs/:jobId/retry",
+    { preHandler: [(fastify as any).authenticate] } as any,
+    async (request: any, reply) => {
+      try {
+        const { schoolId, jobId } = request.params as {
+          schoolId: string;
+          jobId: string;
+        };
+        const user = request.user;
+        requireRoles(user, ["SCHOOL_ADMIN"]);
+        requireSchoolScope(user, schoolId);
+
+        const job = getImportJob(jobId);
+        if (!job || job.schoolId !== schoolId) {
+          return reply.status(404).send({ error: "Import job not found" });
+        }
+        const updated = incrementImportJobRetry(jobId);
+        return { ok: true, job: updated };
+      } catch (err) {
+        return sendHttpError(reply, err);
+      }
+    },
+  );
+
+  fastify.get(
+    "/schools/:schoolId/import-metrics",
+    { preHandler: [(fastify as any).authenticate] } as any,
+    async (request: any, reply) => {
+      try {
+        const { schoolId } = request.params as { schoolId: string };
+        const user = request.user;
+        requireRoles(user, ["SCHOOL_ADMIN"]);
+        requireSchoolScope(user, schoolId);
+        return getImportMetrics(schoolId);
+      } catch (err) {
+        return sendHttpError(reply, err);
+      }
+    },
+  );
+
   // Device user import audit (UI import wizard telemetry)
   fastify.post(
     "/schools/:schoolId/import-audit",
@@ -2307,7 +2795,16 @@ export default async function (fastify: FastifyInstance) {
         const message =
           typeof body.message === "string" ? body.message.slice(0, 1000) : null;
         const payload =
-          body.payload && typeof body.payload === "object" ? body.payload : null;
+          body.payload && typeof body.payload === "object"
+            ? {
+                ...(body.payload as Record<string, unknown>),
+                actorId: user?.sub || null,
+                actorRole: user?.role || null,
+              }
+            : {
+                actorId: user?.sub || null,
+                actorRole: user?.role || null,
+              };
 
         const log = await prisma.provisioningLog.create({
           data: {

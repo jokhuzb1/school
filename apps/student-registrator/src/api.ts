@@ -875,6 +875,142 @@ export async function createImportAuditLog(
   return res.json();
 }
 
+export type DeviceImportRowPayload = {
+  employeeNo: string;
+  firstName: string;
+  lastName: string;
+  fatherName?: string;
+  classId: string;
+  parentPhone?: string;
+  gender?: 'MALE' | 'FEMALE' | 'male' | 'female';
+};
+
+export async function previewDeviceImport(
+  schoolId: string,
+  rows: DeviceImportRowPayload[],
+): Promise<{
+  total: number;
+  createCount: number;
+  updateCount: number;
+  skipCount: number;
+  invalidCount: number;
+  duplicateCount: number;
+  classErrorCount: number;
+  rows: Array<{
+    employeeNo: string;
+    firstName: string;
+    lastName: string;
+    classId: string;
+    action: 'CREATE' | 'UPDATE' | 'INVALID';
+    reasons: string[];
+    existingStudentId?: string | null;
+  }>;
+}> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/device-import/preview`, {
+    method: 'POST',
+    body: JSON.stringify({ rows }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || 'Failed to preview import');
+  }
+  return res.json();
+}
+
+export async function commitDeviceImport(
+  schoolId: string,
+  payload: {
+    rows: DeviceImportRowPayload[];
+    idempotencyKey?: string;
+    sourceDeviceId?: string;
+    syncMode?: 'none' | 'current' | 'all' | 'selected';
+    targetDeviceIds?: string[];
+    retryMode?: boolean;
+  },
+): Promise<{
+  ok: boolean;
+  idempotent: boolean;
+  jobId: string;
+  createdCount: number;
+  updatedCount: number;
+  created: Array<{ id: string; deviceStudentId: string | null }>;
+  updated: Array<{ id: string; deviceStudentId: string | null }>;
+  students: Array<{
+    id: string;
+    deviceStudentId: string | null;
+    firstName: string;
+    lastName: string;
+  }>;
+}> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/device-import/commit`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || 'Failed to commit import');
+  }
+  return res.json();
+}
+
+export async function getImportJob(
+  schoolId: string,
+  jobId: string,
+): Promise<{
+  id: string;
+  schoolId: string;
+  status: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED';
+  retryCount: number;
+  lastError?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  totalRows: number;
+  processed: number;
+  success: number;
+  failed: number;
+  synced: number;
+}> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/import-jobs/${jobId}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || 'Failed to fetch import job');
+  }
+  return res.json();
+}
+
+export async function retryImportJob(
+  schoolId: string,
+  jobId: string,
+): Promise<{ ok: boolean }> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/import-jobs/${jobId}/retry`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || 'Failed to retry import job');
+  }
+  return res.json();
+}
+
+export async function getImportMetrics(
+  schoolId: string,
+): Promise<{
+  totalRuns: number;
+  totalSuccess: number;
+  totalFailed: number;
+  totalSynced: number;
+  successRate: number;
+  retryRate: number;
+  meanLatencyMs: number;
+}> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/import-metrics`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || 'Failed to fetch import metrics');
+  }
+  return res.json();
+}
+
 export async function retryProvisioning(
   provisioningId: string,
   deviceIds: string[] = [],
@@ -882,6 +1018,14 @@ export async function retryProvisioning(
   ok: boolean;
   updated?: number;
   targetDeviceIds?: string[];
+  perDeviceResults?: Array<{
+    backendDeviceId: string;
+    deviceExternalId?: string | null;
+    deviceName?: string;
+    status: string;
+    lastError?: string | null;
+    updatedAt?: string | null;
+  }>;
   connectionCheck?: {
     checked: number;
     failed: number;
@@ -893,6 +1037,14 @@ export async function retryProvisioning(
     ok: boolean;
     updated?: number;
     targetDeviceIds?: string[];
+    perDeviceResults?: Array<{
+      backendDeviceId: string;
+      deviceExternalId?: string | null;
+      deviceName?: string;
+      status: string;
+      lastError?: string | null;
+      updatedAt?: string | null;
+    }>;
     connectionCheck?: {
       checked: number;
       failed: number;
@@ -910,9 +1062,25 @@ export async function retryProvisioning(
  * Syncs a student to devices by finding their last provisioning ID and retrying it.
  * This is used when a student's profile is updated and needs to be pushed to devices.
  */
-export async function syncStudentToDevices(studentId: string, deviceIds: string[] = []): Promise<boolean> {
+export async function syncStudentToDevices(
+  studentId: string,
+  deviceIds: string[] = [],
+): Promise<{
+  ok: boolean;
+  reason?: string;
+  perDeviceResults: Array<{
+    backendDeviceId: string;
+    deviceExternalId?: string | null;
+    deviceName?: string;
+    status: string;
+    lastError?: string | null;
+    updatedAt?: string | null;
+  }>;
+}> {
   const user = getAuthUser();
-  if (!user?.schoolId) return false;
+  if (!user?.schoolId) {
+    return { ok: false, reason: 'No school', perDeviceResults: [] };
+  }
 
   try {
     console.debug('[Sync] start', { studentId, schoolId: user.schoolId, backendUrl: BACKEND_URL });
@@ -927,17 +1095,20 @@ export async function syncStudentToDevices(studentId: string, deviceIds: string[
     const lastLog = response.data[0];
     if (!lastLog || !lastLog.provisioningId) {
       console.warn(`[Sync] No provisioning found for student ${studentId}`);
-      return false;
+      return { ok: false, reason: 'No provisioning', perDeviceResults: [] };
     }
 
     // 2. Retry the provisioning
     console.debug('[Sync] retry provisioning', { provisioningId: lastLog.provisioningId });
     const result = await retryProvisioning(lastLog.provisioningId, deviceIds);
     console.debug('[Sync] retry result', result);
-    return result.ok;
+    return {
+      ok: Boolean(result.ok),
+      perDeviceResults: result.perDeviceResults || [],
+    };
   } catch (err) {
     console.error(`[Sync] Failed to sync student ${studentId}:`, err);
-    return false;
+    return { ok: false, reason: 'Sync failed', perDeviceResults: [] };
   }
 }
 

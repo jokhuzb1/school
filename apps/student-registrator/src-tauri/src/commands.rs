@@ -966,6 +966,8 @@ pub async fn retry_provisioning(
     let mut failed = 0usize;
     let mut missing_credentials = 0usize;
 
+    let target_backend_ids_for_summary = target_backend_ids.clone();
+
     for backend_device_id in target_backend_ids {
         let link = provisioning
             .get("devices")
@@ -1068,10 +1070,66 @@ pub async fn retry_provisioning(
         let _ = save_devices(&local_devices);
     }
 
+    let final_provisioning = client
+        .get_provisioning(&provisioning_id)
+        .await
+        .unwrap_or_else(|_| provisioning.clone());
+
+    let per_device_results: Vec<Value> = final_provisioning
+        .get("devices")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| {
+                    let backend_device_id = item.get("deviceId").and_then(|v| v.as_str())?;
+                    if !target_backend_ids_for_summary.is_empty()
+                        && !target_backend_ids_for_summary
+                            .iter()
+                            .any(|id| id == backend_device_id)
+                    {
+                        return None;
+                    }
+                    let status = item
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("UNKNOWN");
+                    let last_error = item
+                        .get("lastError")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let updated_at = item
+                        .get("updatedAt")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let device_obj = item.get("device");
+                    let device_name = device_obj
+                        .and_then(|d| d.get("name"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let device_external_id = device_obj
+                        .and_then(|d| d.get("deviceId"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+
+                    Some(serde_json::json!({
+                        "backendDeviceId": backend_device_id,
+                        "deviceExternalId": device_external_id,
+                        "deviceName": device_name,
+                        "status": status,
+                        "lastError": last_error,
+                        "updatedAt": updated_at
+                    }))
+                })
+                .collect::<Vec<Value>>()
+        })
+        .unwrap_or_default();
+
     Ok(serde_json::json!({
         "ok": retry_result.get("ok").and_then(|v| v.as_bool()).unwrap_or(true),
         "updated": retry_result.get("updated").and_then(|v| v.as_i64()).unwrap_or(0),
         "targetDeviceIds": retry_result.get("targetDeviceIds").cloned().unwrap_or_else(|| serde_json::json!([])),
+        "perDeviceResults": per_device_results,
         "connectionCheck": {
             "checked": checked,
             "failed": failed,
