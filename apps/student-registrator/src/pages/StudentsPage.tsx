@@ -54,6 +54,7 @@ type DeviceOnlyMeta = {
   localDeviceId: string;
   hasFace: boolean;
 };
+type DeviceFaceFetchState = 'success' | 'failed';
 
 const PAGE_SIZE = 25;
 
@@ -166,6 +167,9 @@ export function StudentsPage() {
     Record<string, DeviceOnlyMeta>
   >({});
   const [deviceOnlyFaceByEmployeeNo, setDeviceOnlyFaceByEmployeeNo] = useState<Record<string, string>>({});
+  const [deviceOnlyFaceFetchStateByEmployeeNo, setDeviceOnlyFaceFetchStateByEmployeeNo] = useState<
+    Record<string, DeviceFaceFetchState>
+  >({});
   const [loading, setLoading] = useState(false);
   const [deviceUsersLoading, setDeviceUsersLoading] = useState(false);
   const [liveStateByStudent, setLiveStateByStudent] = useState<Record<string, StudentLiveState>>({});
@@ -269,6 +273,8 @@ export function StudentsPage() {
       if (!schoolId || backendDevices.length === 0 || localDevices.length === 0) {
         setDeviceDiscoveredRows([]);
         setDeviceOnlyMetaByEmployeeNo({});
+        setDeviceOnlyFaceByEmployeeNo({});
+        setDeviceOnlyFaceFetchStateByEmployeeNo({});
         return;
       }
 
@@ -355,10 +361,14 @@ export function StudentsPage() {
 
         setDeviceDiscoveredRows(Array.from(byEmployeeNo.values()));
         setDeviceOnlyMetaByEmployeeNo(nextMetaByEmployeeNo);
+        setDeviceOnlyFaceByEmployeeNo({});
+        setDeviceOnlyFaceFetchStateByEmployeeNo({});
       } catch (err) {
         console.error('Failed to load device-discovered users:', err);
         setDeviceDiscoveredRows([]);
         setDeviceOnlyMetaByEmployeeNo({});
+        setDeviceOnlyFaceByEmployeeNo({});
+        setDeviceOnlyFaceFetchStateByEmployeeNo({});
       } finally {
         setDeviceUsersLoading(false);
       }
@@ -372,7 +382,7 @@ export function StudentsPage() {
       .map((row) => (row.deviceStudentId || '').trim())
       .filter((employeeNo) => {
         if (!employeeNo) return false;
-        if (deviceOnlyFaceByEmployeeNo[employeeNo]) return false;
+        if (deviceOnlyFaceFetchStateByEmployeeNo[employeeNo]) return false;
         const meta = deviceOnlyMetaByEmployeeNo[employeeNo];
         return Boolean(meta?.localDeviceId && meta.hasFace);
       });
@@ -402,8 +412,15 @@ export function StudentsPage() {
               ...prev,
               [employeeNo]: image,
             }));
+            setDeviceOnlyFaceFetchStateByEmployeeNo((prev) => ({
+              ...prev,
+              [employeeNo]: 'success',
+            }));
           } catch {
-            // best-effort only
+            setDeviceOnlyFaceFetchStateByEmployeeNo((prev) => ({
+              ...prev,
+              [employeeNo]: 'failed',
+            }));
           }
         }
       };
@@ -415,7 +432,7 @@ export function StudentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [deviceOnlyFaceByEmployeeNo, deviceOnlyMetaByEmployeeNo, filteredDeviceRows]);
+  }, [deviceOnlyFaceFetchStateByEmployeeNo, deviceOnlyMetaByEmployeeNo, filteredDeviceRows]);
 
   const buildPhotoUrl = (url?: string | null) => {
     return buildBackendPhotoUrl(BACKEND_URL, url);
