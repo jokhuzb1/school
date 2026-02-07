@@ -1,4 +1,4 @@
-export type DetailTab = 'overview' | 'configuration' | 'users' | 'webhook' | 'sync';
+export type DetailTab = 'overview' | 'configuration' | 'users' | 'sync';
 
 export type ImportRow = {
   employeeNo: string;
