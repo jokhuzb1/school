@@ -10,8 +10,17 @@ use std::collections::{HashMap, HashSet};
 use serde_json::Value;
 use reqwest::Client;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use serde_json::Map;
 
 const MAX_FACE_IMAGE_BYTES: usize = 200 * 1024;
+const WEBHOOK_CANDIDATE_PATHS: [&str; 2] = [
+    "ISAPI/Event/notification/httpHosts?format=json",
+    "ISAPI/Event/notification/httpHosts/1?format=json",
+];
+const WEBHOOK_RAW_CANDIDATE_PATHS: [&str; 2] = [
+    "ISAPI/Event/notification/httpHosts",
+    "ISAPI/Event/notification/httpHosts/1",
+];
 
 fn generate_employee_no() -> String {
     let mut result = String::new();
@@ -214,6 +223,368 @@ pub async fn test_device_connection(device_id: String) -> Result<DeviceConnectio
     Ok(result)
 }
 
+fn normalize_direction(direction: &str) -> Result<&'static str, String> {
+    match direction.trim().to_lowercase().as_str() {
+        "in" => Ok("in"),
+        "out" => Ok("out"),
+        _ => Err("direction must be in|out".to_string()),
+    }
+}
+
+fn replace_url_fields(value: &mut Value, new_url: &str) -> usize {
+    match value {
+        Value::Object(map) => replace_url_fields_in_object(map, new_url),
+        Value::Array(items) => items
+            .iter_mut()
+            .map(|item| replace_url_fields(item, new_url))
+            .sum(),
+        _ => 0,
+    }
+}
+
+fn replace_url_fields_in_object(map: &mut Map<String, Value>, new_url: &str) -> usize {
+    let mut changed = 0usize;
+    for (k, v) in map {
+        if v.is_string() && k.to_ascii_lowercase().contains("url") {
+            *v = Value::String(new_url.to_string());
+            changed += 1;
+            continue;
+        }
+        changed += replace_url_fields(v, new_url);
+    }
+    changed
+}
+
+async fn read_device_webhook_config(client: &HikvisionClient) -> Result<(String, Value), String> {
+    let mut errors = Vec::<String>::new();
+    for path in WEBHOOK_CANDIDATE_PATHS {
+        match client.get_isapi_json(path).await {
+            Ok(raw) => return Ok((path.to_string(), raw)),
+            Err(err) => errors.push(format!("{} => {}", path, err)),
+        }
+    }
+    Err(format!(
+        "Webhook config o'qib bo'lmadi. Sinovlar: {}",
+        errors.join(" | ")
+    ))
+}
+
+fn decode_markup_entities(input: &str) -> String {
+    input
+        .replace("\\/", "/")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
+fn sanitize_webhook_candidate(input: &str) -> Option<String> {
+    let decoded = decode_markup_entities(input);
+    let trimmed = decoded
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_end_matches('>')
+        .trim()
+        .to_string();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_lowercase();
+    if lower.contains("xmlschema") {
+        return None;
+    }
+    if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with('/') {
+        return Some(trimmed);
+    }
+    None
+}
+
+fn clean_webhook_candidates(items: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = items
+        .iter()
+        .filter_map(|item| sanitize_webhook_candidate(item))
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn extract_webhook_urls_from_json(raw: &Value) -> Vec<String> {
+    let mut urls = Vec::<String>::new();
+    if let Some((notification, _)) = extract_primary_http_host_notification(raw) {
+        for key in ["url", "URL", "httpURL", "httpUrl", "HttpURL", "HttpUrl"] {
+            if let Some(v) = notification.get(key).and_then(|value| value.as_str()) {
+                if let Some(clean) = sanitize_webhook_candidate(v) {
+                    urls.push(clean);
+                }
+            }
+        }
+    }
+    clean_webhook_candidates(urls)
+}
+
+fn extract_host_id(value: &Value) -> Option<String> {
+    if let Some(id) = value.get("id").and_then(|v| v.as_str()) {
+        let trimmed = id.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    if let Some(id_num) = value.get("id").and_then(|v| v.as_i64()) {
+        return Some(id_num.to_string());
+    }
+    None
+}
+
+fn extract_primary_http_host_notification(raw: &Value) -> Option<(Value, String)> {
+    if let Some(item) = raw.get("HttpHostNotification") {
+        let id = extract_host_id(item).unwrap_or_else(|| "1".to_string());
+        return Some((item.clone(), id));
+    }
+
+    let list = raw.get("HttpHostNotificationList")?;
+    let entries = list.get("HttpHostNotification")?;
+    match entries {
+        Value::Object(obj) => {
+            let entry = Value::Object(obj.clone());
+            let id = extract_host_id(&entry).unwrap_or_else(|| "1".to_string());
+            Some((entry, id))
+        }
+        Value::Array(arr) => {
+            if arr.is_empty() {
+                return None;
+            }
+            if let Some(found) = arr.iter().find(|item| extract_host_id(item).as_deref() == Some("1")) {
+                let id = extract_host_id(found).unwrap_or_else(|| "1".to_string());
+                return Some((found.clone(), id));
+            }
+            let first = arr.first()?.clone();
+            let id = extract_host_id(&first).unwrap_or_else(|| "1".to_string());
+            Some((first, id))
+        }
+        _ => None,
+    }
+}
+
+fn response_status_ok(value: &Value) -> bool {
+    if let Some(code) = value.get("statusCode").and_then(|v| v.as_i64()) {
+        return code == 1;
+    }
+    if let Some(status) = value.get("statusString").and_then(|v| v.as_str()) {
+        return status.eq_ignore_ascii_case("OK");
+    }
+    true
+}
+
+async fn read_http_host_urls(client: &HikvisionClient, host_id: &str) -> Vec<String> {
+    let single_path = format!("ISAPI/Event/notification/httpHosts/{}?format=json", host_id);
+    if let Ok(single_raw) = client.get_isapi_json(single_path.as_str()).await {
+        let scoped = serde_json::json!({ "HttpHostNotification": single_raw.get("HttpHostNotification").cloned().unwrap_or(single_raw.clone()) });
+        let urls = extract_webhook_urls_from_json(&scoped);
+        if !urls.is_empty() {
+            return urls;
+        }
+    }
+    if let Ok(list_raw) = client.get_isapi_json("ISAPI/Event/notification/httpHosts?format=json").await {
+        let urls = extract_webhook_urls_from_json(&list_raw);
+        if !urls.is_empty() {
+            return urls;
+        }
+    }
+    Vec::new()
+}
+
+fn extract_direct_url_candidates(text: &str, out: &mut Vec<String>) {
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    while i + 7 < bytes.len() {
+        if text[i..].starts_with("http://")
+            || text[i..].starts_with("https://")
+            || text[i..].starts_with("/webhook/")
+        {
+            let start = i;
+            let mut end = i;
+            while end < bytes.len() {
+                let c = bytes[end] as char;
+                if c.is_whitespace() || c == '"' || c == '\'' || c == '<' || c == '>' {
+                    break;
+                }
+                end += 1;
+            }
+            if end > start {
+                out.push(text[start..end].trim().to_string());
+            }
+            i = end;
+            continue;
+        }
+        i += 1;
+    }
+}
+
+fn extract_xml_tag_values(text: &str) -> Vec<String> {
+    let tag_names = ["url", "httpurl", "hosturl", "callbackurl"];
+    let source = decode_markup_entities(text);
+    let lower = source.to_lowercase();
+    let bytes = source.as_bytes();
+    let mut out = Vec::<String>::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let Some(rel_open) = source[i..].find('<') else { break };
+        let open = i + rel_open;
+        let Some(rel_end) = source[open..].find('>') else { break };
+        let end = open + rel_end;
+        if end <= open + 1 {
+            i = end + 1;
+            continue;
+        }
+        let token = &source[open + 1..end];
+        let trimmed = token.trim();
+        if trimmed.starts_with('/') || trimmed.starts_with('?') || trimmed.starts_with('!') {
+            i = end + 1;
+            continue;
+        }
+        let raw_name = trimmed
+            .split_whitespace()
+            .next()
+            .unwrap_or("");
+        let base_name = raw_name
+            .split(':')
+            .last()
+            .unwrap_or(raw_name)
+            .to_lowercase();
+        if !tag_names.iter().any(|name| *name == base_name) {
+            i = end + 1;
+            continue;
+        }
+        let mut search = end + 1;
+        let mut close_start_opt: Option<usize> = None;
+        let mut close_end_opt: Option<usize> = None;
+        while search < bytes.len() {
+            let Some(rel_close_open) = source[search..].find("</") else { break };
+            let close_open = search + rel_close_open;
+            let Some(rel_close_end) = source[close_open..].find('>') else { break };
+            let close_end = close_open + rel_close_end;
+            let close_token = source[close_open + 2..close_end].trim();
+            let close_base = close_token
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .split(':')
+                .last()
+                .unwrap_or("")
+                .to_lowercase();
+            if close_base == base_name {
+                close_start_opt = Some(close_open);
+                close_end_opt = Some(close_end);
+                break;
+            }
+            search = close_end + 1;
+        }
+        if let (Some(close_start), Some(close_end)) = (close_start_opt, close_end_opt) {
+            if close_start > end + 1 {
+                let value = lower[end + 1..close_start].trim();
+                if !value.is_empty() {
+                    out.push(source[end + 1..close_start].trim().to_string());
+                }
+            }
+            i = close_end + 1;
+            continue;
+        }
+        i = end + 1;
+    }
+    out
+}
+
+fn extract_urls_from_text(text: &str) -> Vec<String> {
+    let decoded = decode_markup_entities(text);
+    let mut urls: Vec<String> = Vec::new();
+    extract_direct_url_candidates(&decoded, &mut urls);
+    urls.extend(extract_xml_tag_values(&decoded));
+    clean_webhook_candidates(urls)
+}
+
+fn is_valid_webhook_candidate(url: &str) -> bool {
+    let lower = url.to_lowercase();
+    if lower.contains("isapi.org/ver20/xmlschema") {
+        return false;
+    }
+    if lower.contains("&gt;") || lower.contains("&lt;") || lower.contains('<') || lower.contains('>') {
+        return false;
+    }
+    lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || (lower.starts_with('/') && !lower.starts_with("/isapi/"))
+}
+
+fn pick_primary_webhook_url(urls: &[String], direction: &str) -> Option<String> {
+    let dir = direction.to_lowercase();
+    urls.iter()
+        .find(|u| {
+            let lower = u.to_lowercase();
+            let direction_match =
+                lower.contains(&format!("/{dir}?"))
+                    || lower.ends_with(&format!("/{dir}"))
+                    || lower.contains(&format!("/{dir}&"));
+            is_valid_webhook_candidate(u) && (direction_match || lower.contains("secret="))
+        })
+        .cloned()
+        .or_else(|| urls.iter().find(|u| is_valid_webhook_candidate(u)).cloned())
+        .or_else(|| None)
+}
+
+fn replace_xml_url_tags(xml: &str, target_url: &str) -> (String, usize) {
+    let tags = ["url", "URL", "httpUrl", "HttpUrl", "HTTPUrl", "address", "Address"];
+    let mut out = xml.to_string();
+    let mut total = 0usize;
+    for tag in tags {
+        let open = format!("<{}>", tag);
+        let close = format!("</{}>", tag);
+        let mut start = 0usize;
+        loop {
+            let Some(open_pos_rel) = out[start..].find(&open) else { break };
+            let open_pos = start + open_pos_rel;
+            let value_start = open_pos + open.len();
+            let Some(close_pos_rel) = out[value_start..].find(&close) else { break };
+            let close_pos = value_start + close_pos_rel;
+            out.replace_range(value_start..close_pos, target_url);
+            total += 1;
+            start = value_start + target_url.len() + close.len();
+        }
+    }
+    (out, total)
+}
+
+fn normalize_http_hosts_put_path(path: &str) -> String {
+    let trimmed = path.trim();
+    if trimmed.contains("ISAPI/Event/notification/httpHosts/1") {
+        return trimmed.replace(
+            "ISAPI/Event/notification/httpHosts/1",
+            "ISAPI/Event/notification/httpHosts",
+        );
+    }
+    trimmed.to_string()
+}
+
+fn normalize_target_url_for_device(target_url: &str) -> String {
+    let trimmed = target_url.trim();
+    if let Ok(parsed) = reqwest::Url::parse(trimmed) {
+        let mut value = parsed.path().to_string();
+        if let Some(query) = parsed.query() {
+            value.push('?');
+            value.push_str(query);
+        }
+        if value.is_empty() {
+            "/".to_string()
+        } else {
+            value
+        }
+    } else {
+        trimmed.to_string()
+    }
+}
+
 #[tauri::command]
 pub async fn probe_device_connection(
     host: String,
@@ -322,6 +693,199 @@ pub async fn update_device_configuration(
         "before": before,
         "after": after
     }))
+}
+
+#[tauri::command]
+pub async fn get_device_webhook_config(
+    device_id: String,
+    direction: String,
+) -> Result<Value, String> {
+    let normalized = normalize_direction(&direction)?;
+    let device = get_device_by_id(&device_id).ok_or("Device not found")?;
+    if is_credentials_expired(&device) {
+        return Err("Ulanish sozlamalari muddati tugagan".to_string());
+    }
+    let client = HikvisionClient::new(device);
+    if let Ok((path, raw)) = read_device_webhook_config(&client).await {
+        let scoped = extract_primary_http_host_notification(&raw)
+            .map(|(notification, _)| serde_json::json!({ "HttpHostNotification": notification }))
+            .unwrap_or_else(|| raw.clone());
+        let urls = extract_webhook_urls_from_json(&raw);
+        let primary = pick_primary_webhook_url(&urls, normalized);
+        if primary.is_some() {
+            return Ok(serde_json::json!({
+                "ok": true,
+                "direction": normalized,
+                "path": path,
+                "format": "json",
+                "primaryUrl": primary,
+                "urls": urls,
+                "raw": scoped
+            }));
+        }
+    }
+
+    let mut errors = Vec::<String>::new();
+    for path in WEBHOOK_RAW_CANDIDATE_PATHS {
+        match client.get_isapi_raw(path).await {
+            Ok(text) => {
+                let urls = extract_urls_from_text(&text);
+                if urls.is_empty() {
+                    continue;
+                }
+                let primary = pick_primary_webhook_url(&urls, normalized);
+                return Ok(serde_json::json!({
+                    "ok": true,
+                    "direction": normalized,
+                    "path": path,
+                    "format": "raw",
+                    "primaryUrl": primary,
+                    "urls": urls,
+                    "raw": {
+                        "text": text
+                    }
+                }));
+            }
+            Err(err) => errors.push(format!("{} => {}", path, err)),
+        }
+    }
+    Err(format!("Webhookni qurilmadan o'qib bo'lmadi: {}", errors.join(" | ")))
+}
+
+#[tauri::command]
+pub async fn sync_device_webhook_config(
+    device_id: String,
+    direction: String,
+    target_url: String,
+) -> Result<Value, String> {
+    let normalized = normalize_direction(&direction)?;
+    let target_url = normalize_target_url_for_device(&target_url);
+    if target_url.is_empty() {
+        return Err("targetUrl bo'sh bo'lmasligi kerak".to_string());
+    }
+
+    let device = get_device_by_id(&device_id).ok_or("Device not found")?;
+    if is_credentials_expired(&device) {
+        return Err("Ulanish sozlamalari muddati tugagan".to_string());
+    }
+
+    let client = HikvisionClient::new(device);
+    if let Ok((_path, mut before_raw)) = read_device_webhook_config(&client).await {
+        let (notification, host_id) = extract_primary_http_host_notification(&before_raw)
+            .unwrap_or_else(|| (before_raw.clone(), "1".to_string()));
+        before_raw = serde_json::json!({ "HttpHostNotification": notification.clone() });
+        let before_urls = extract_webhook_urls_from_json(&before_raw);
+
+        let mut updated_notification = notification.clone();
+        let replaced = replace_url_fields(&mut updated_notification, &target_url);
+        if replaced > 0 {
+            let target_cmp = normalize_target_url_for_device(&target_url);
+
+            let mut write_attempt_errors: Vec<String> = Vec::new();
+            let attempts: Vec<(String, Value, &'static str)> = vec![
+                (
+                    format!("ISAPI/Event/notification/httpHosts/{}?format=json", host_id),
+                    serde_json::json!({ "HttpHostNotification": updated_notification.clone() }),
+                    "single-path/single-payload",
+                ),
+                (
+                    "ISAPI/Event/notification/httpHosts?format=json".to_string(),
+                    serde_json::json!({
+                        "HttpHostNotificationList": {
+                            "HttpHostNotification": updated_notification.clone()
+                        }
+                    }),
+                    "list-path/list-payload",
+                ),
+                (
+                    "ISAPI/Event/notification/httpHosts?format=json".to_string(),
+                    serde_json::json!({ "HttpHostNotification": updated_notification.clone() }),
+                    "list-path/single-payload",
+                ),
+            ];
+
+            for (put_path, put_payload, attempt_name) in attempts {
+                match client.put_isapi_json(put_path.as_str(), put_payload).await {
+                    Ok(put_result) => {
+                        if !response_status_ok(&put_result) {
+                            write_attempt_errors.push(format!(
+                                "{} => status not OK: {}",
+                                attempt_name, put_result
+                            ));
+                            continue;
+                        }
+                        let after_urls = read_http_host_urls(&client, &host_id).await;
+                        let is_applied = after_urls
+                            .iter()
+                            .any(|item| normalize_target_url_for_device(item) == target_cmp);
+                        if is_applied {
+                            return Ok(serde_json::json!({
+                                "ok": true,
+                                "direction": normalized,
+                                "path": put_path,
+                                "format": "json",
+                                "attempt": attempt_name,
+                                "replacedFields": replaced,
+                                "beforeUrls": before_urls,
+                                "afterUrls": after_urls,
+                                "raw": put_result
+                            }));
+                        }
+                        write_attempt_errors.push(format!(
+                            "{} => applied=false, after={}",
+                            attempt_name,
+                            if after_urls.is_empty() { "-".to_string() } else { after_urls.join(" | ") }
+                        ));
+                    }
+                    Err(err) => {
+                        write_attempt_errors.push(format!("{} => {}", attempt_name, err));
+                    }
+                }
+            }
+
+            return Err(format!(
+                "Qurilma URLni saqlamadi. hostId={}, kutilgan={}, urinishlar={}",
+                host_id,
+                target_cmp,
+                write_attempt_errors.join(" || ")
+            ));
+        }
+    }
+
+    let mut errors = Vec::<String>::new();
+    for path in WEBHOOK_RAW_CANDIDATE_PATHS {
+        match client.get_isapi_raw(path).await {
+            Ok(text) => {
+                let before_urls = extract_urls_from_text(&text);
+                if before_urls.is_empty() {
+                    continue;
+                }
+                let (updated, replaced) = replace_xml_url_tags(&text, &target_url);
+                if replaced == 0 {
+                    continue;
+                }
+                let put_path = normalize_http_hosts_put_path(path);
+                let after_text = client
+                    .put_isapi_raw(put_path.as_str(), updated, Some("application/xml"))
+                    .await?;
+                let after_urls = extract_urls_from_text(&after_text);
+                return Ok(serde_json::json!({
+                    "ok": true,
+                    "direction": normalized,
+                    "path": put_path,
+                    "format": "raw",
+                    "replacedFields": replaced,
+                    "beforeUrls": before_urls,
+                    "afterUrls": after_urls,
+                    "raw": {
+                        "text": after_text
+                    }
+                }));
+            }
+            Err(err) => errors.push(format!("{} => {}", path, err)),
+        }
+    }
+    Err(format!("Webhook sync qilib bo'lmadi: {}", errors.join(" | ")))
 }
 
 #[tauri::command]
@@ -800,6 +1364,32 @@ pub async fn get_user_face(device_id: String, employee_no: String) -> Result<ser
         .ok_or("Foydalanuvchi topilmadi")?;
 
     let face_url = user.face_url.ok_or("Qurilmada rasm topilmadi")?;
+    let face_bytes = client.fetch_face_image(&face_url).await?;
+    let image_base64 = STANDARD.encode(face_bytes);
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "employeeNo": employee_no,
+        "faceUrl": face_url,
+        "imageBase64": image_base64
+    }))
+}
+
+#[tauri::command]
+pub async fn get_user_face_by_url(
+    device_id: String,
+    employee_no: String,
+    face_url: String,
+) -> Result<serde_json::Value, String> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let device = get_device_by_id(&device_id)
+        .ok_or("Device not found")?;
+    if is_credentials_expired(&device) {
+        return Err("Ulanish sozlamalari muddati tugagan".to_string());
+    }
+
+    let client = HikvisionClient::new(device);
     let face_bytes = client.fetch_face_image(&face_url).await?;
     let image_base64 = STANDARD.encode(face_bytes);
 

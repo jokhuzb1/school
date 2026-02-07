@@ -21,6 +21,8 @@ fn main() {
             get_device_capabilities,
             get_device_configuration,
             update_device_configuration,
+            get_device_webhook_config,
+            sync_device_webhook_config,
             check_student_on_device,
             // Student registration
             register_student,
@@ -28,6 +30,7 @@ fn main() {
             fetch_users,
             delete_user,
             get_user_face,
+            get_user_face_by_url,
             recreate_user,
             // Provisioning
             get_provisioning,

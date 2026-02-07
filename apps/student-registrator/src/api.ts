@@ -686,6 +686,45 @@ export async function updateDeviceConfiguration(params: {
   });
 }
 
+export interface DeviceWebhookConfig {
+  ok: boolean;
+  direction: 'in' | 'out';
+  path: string;
+  primaryUrl?: string | null;
+  urls: string[];
+  raw: Record<string, unknown>;
+}
+
+export async function getDeviceWebhookConfig(
+  deviceId: string,
+  direction: 'in' | 'out',
+): Promise<DeviceWebhookConfig> {
+  return invoke<DeviceWebhookConfig>('get_device_webhook_config', {
+    deviceId,
+    direction,
+  });
+}
+
+export async function syncDeviceWebhookConfig(params: {
+  deviceId: string;
+  direction: 'in' | 'out';
+  targetUrl: string;
+}): Promise<{
+  ok: boolean;
+  direction: 'in' | 'out';
+  path: string;
+  replacedFields: number;
+  beforeUrls: string[];
+  afterUrls: string[];
+  raw: Record<string, unknown>;
+}> {
+  return invoke('sync_device_webhook_config', {
+    deviceId: params.deviceId,
+    direction: params.direction,
+    targetUrl: params.targetUrl,
+  });
+}
+
 export async function checkStudentOnDevice(
   deviceId: string,
   employeeNo: string,
@@ -763,6 +802,18 @@ export async function getUserFace(
   return invoke<{ ok: boolean; employeeNo: string; faceUrl?: string; imageBase64: string }>('get_user_face', {
     deviceId,
     employeeNo,
+  });
+}
+
+export async function getUserFaceByUrl(
+  deviceId: string,
+  employeeNo: string,
+  faceUrl: string,
+): Promise<{ ok: boolean; employeeNo: string; faceUrl?: string; imageBase64: string }> {
+  return invoke<{ ok: boolean; employeeNo: string; faceUrl?: string; imageBase64: string }>('get_user_face_by_url', {
+    deviceId,
+    employeeNo,
+    faceUrl,
   });
 }
 

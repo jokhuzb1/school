@@ -10,7 +10,7 @@ use std::time::Duration;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 8;
 const MAX_FACE_IMAGE_BYTES: usize = 200 * 1024;
-const DEBUG_HIKVISION: bool = cfg!(debug_assertions);
+const DEBUG_HIKVISION: bool = false;
 
 fn redact(value: &str) -> String {
     let max = 300usize;
@@ -699,6 +699,35 @@ impl HikvisionClient {
             .auth_request_json(reqwest::Method::PUT, &url, Some(payload))
             .await?;
         serde_json::from_str::<Value>(&text).map_err(|e| e.to_string())
+    }
+
+    pub async fn get_isapi_raw(&self, path: &str) -> Result<String, String> {
+        let clean = path.trim().trim_start_matches('/');
+        let url = format!("{}/{}", self.base_url(), clean);
+        let res = self
+            .send_with_auth(reqwest::Method::GET, &url, None, None, None)
+            .await?;
+        res.text().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn put_isapi_raw(
+        &self,
+        path: &str,
+        payload: String,
+        content_type: Option<&str>,
+    ) -> Result<String, String> {
+        let clean = path.trim().trim_start_matches('/');
+        let url = format!("{}/{}", self.base_url(), clean);
+        let res = self
+            .send_with_auth(
+                reqwest::Method::PUT,
+                &url,
+                Some(payload.into_bytes()),
+                content_type,
+                None,
+            )
+            .await?;
+        res.text().await.map_err(|e| e.to_string())
     }
 
     pub async fn probe_capabilities(&self) -> Value {

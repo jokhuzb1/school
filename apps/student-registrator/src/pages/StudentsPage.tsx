@@ -4,7 +4,7 @@ import {
   fetchClasses,
   fetchDevices,
   fetchUsers,
-  getUserFace,
+  getUserFaceByUrl,
   fetchStudentDiagnostics,
   fetchSchoolDevices,
   getAuthUser,
@@ -53,8 +53,9 @@ type StudentLiveState = {
 type DeviceOnlyMeta = {
   localDeviceId: string;
   hasFace: boolean;
+  faceUrl?: string;
 };
-type DeviceFaceFetchState = 'success' | 'failed';
+type DeviceFaceFetchState = 'loading' | 'success' | 'failed';
 
 const PAGE_SIZE = 25;
 
@@ -308,6 +309,7 @@ export function StudentsPage() {
                   nextMetaByEmployeeNo[employeeNo] = {
                     localDeviceId: localDevice.id,
                     hasFace,
+                    faceUrl: user.faceURL || undefined,
                   };
                   byEmployeeNo.set(employeeNo, {
                     studentId: `device-only-${employeeNo}`,
@@ -349,6 +351,7 @@ export function StudentsPage() {
                   nextMetaByEmployeeNo[employeeNo] = {
                     localDeviceId: localDevice.id,
                     hasFace,
+                    faceUrl: user.faceURL || currentMeta?.faceUrl || undefined,
                   };
                 }
               });
@@ -392,7 +395,15 @@ export function StudentsPage() {
     let cancelled = false;
     const run = async () => {
       const queue = [...new Set(pending)];
-      const concurrency = Math.min(4, queue.length);
+      setDeviceOnlyFaceFetchStateByEmployeeNo((prev) => {
+        const next = { ...prev };
+        queue.forEach((employeeNo) => {
+          if (!next[employeeNo]) next[employeeNo] = 'loading';
+        });
+        return next;
+      });
+
+      const concurrency = Math.min(2, queue.length);
       let cursor = 0;
 
       const worker = async () => {
@@ -402,9 +413,23 @@ export function StudentsPage() {
           const employeeNo = queue[currentIndex];
           const meta = deviceOnlyMetaByEmployeeNo[employeeNo];
           if (!meta?.localDeviceId) continue;
+          if (!meta.faceUrl) {
+            setDeviceOnlyFaceFetchStateByEmployeeNo((prev) => ({
+              ...prev,
+              [employeeNo]: 'failed',
+            }));
+            continue;
+          }
           try {
-            const face = await getUserFace(meta.localDeviceId, employeeNo);
-            if (cancelled || !face.imageBase64) continue;
+            const face = await getUserFaceByUrl(meta.localDeviceId, employeeNo, meta.faceUrl);
+            if (cancelled) continue;
+            if (!face.imageBase64) {
+              setDeviceOnlyFaceFetchStateByEmployeeNo((prev) => ({
+                ...prev,
+                [employeeNo]: 'failed',
+              }));
+              continue;
+            }
             const image = face.imageBase64.startsWith('data:image')
               ? face.imageBase64
               : `data:image/jpeg;base64,${face.imageBase64}`;
