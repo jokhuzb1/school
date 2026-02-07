@@ -763,6 +763,34 @@ pub async fn delete_user(device_id: String, employee_no: String) -> Result<bool,
     }
 }
 
+#[tauri::command]
+pub async fn get_user_face(device_id: String, employee_no: String) -> Result<serde_json::Value, String> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let device = get_device_by_id(&device_id)
+        .ok_or("Device not found")?;
+    if is_credentials_expired(&device) {
+        return Err("Ulanish sozlamalari muddati tugagan".to_string());
+    }
+
+    let client = HikvisionClient::new(device);
+    let user = client
+        .get_user_by_employee_no(&employee_no)
+        .await
+        .ok_or("Foydalanuvchi topilmadi")?;
+
+    let face_url = user.face_url.ok_or("Qurilmada rasm topilmadi")?;
+    let face_bytes = client.fetch_face_image(&face_url).await?;
+    let image_base64 = STANDARD.encode(face_bytes);
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "employeeNo": employee_no,
+        "faceUrl": face_url,
+        "imageBase64": image_base64
+    }))
+}
+
 /// Recreate user - delete and create again with updated info
 #[tauri::command]
 pub async fn recreate_user(

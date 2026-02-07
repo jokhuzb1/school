@@ -756,6 +756,16 @@ export async function deleteUser(
   return invoke<boolean>('delete_user', { deviceId, employeeNo });
 }
 
+export async function getUserFace(
+  deviceId: string,
+  employeeNo: string,
+): Promise<{ ok: boolean; employeeNo: string; faceUrl?: string; imageBase64: string }> {
+  return invoke<{ ok: boolean; employeeNo: string; faceUrl?: string; imageBase64: string }>('get_user_face', {
+    deviceId,
+    employeeNo,
+  });
+}
+
 export interface RecreateUserResult {
   employeeNo: string;
   deleteResult: { ok: boolean; statusString?: string; errorMsg?: string };
@@ -880,7 +890,7 @@ export async function retryProvisioning(
  * Syncs a student to devices by finding their last provisioning ID and retrying it.
  * This is used when a student's profile is updated and needs to be pushed to devices.
  */
-export async function syncStudentToDevices(studentId: string): Promise<boolean> {
+export async function syncStudentToDevices(studentId: string, deviceIds: string[] = []): Promise<boolean> {
   const user = getAuthUser();
   if (!user?.schoolId) return false;
 
@@ -902,7 +912,7 @@ export async function syncStudentToDevices(studentId: string): Promise<boolean> 
 
     // 2. Retry the provisioning
     console.debug('[Sync] retry provisioning', { provisioningId: lastLog.provisioningId });
-    const result = await retryProvisioning(lastLog.provisioningId);
+    const result = await retryProvisioning(lastLog.provisioningId, deviceIds);
     console.debug('[Sync] retry result', result);
     return result.ok;
   } catch (err) {

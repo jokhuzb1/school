@@ -16,6 +16,7 @@ import {
   fileToFaceBase64,
   getDeviceWebhookHealth,
   getAuthUser,
+  getUserFace,
   getWebhookInfo,
   recreateUser,
   rotateWebhookSecret,
@@ -23,6 +24,7 @@ import {
   testWebhookEndpoint,
   updateDeviceConfiguration,
   updateStudentProfile,
+  syncStudentToDevices,
   type ClassInfo,
   type DeviceConfig,
   type SchoolDeviceInfo,
@@ -44,6 +46,8 @@ type ImportRow = {
   classId: string;
   parentPhone: string;
   hasFace: boolean;
+  studentId?: string;
+  faceSynced?: boolean;
   status?: 'pending' | 'saved' | 'error';
   error?: string;
 };
@@ -81,6 +85,9 @@ export function DeviceDetailPage() {
   const [importRows, setImportRows] = useState<ImportRow[]>([]);
   const [importLoading, setImportLoading] = useState(false);
   const [availableClasses, setAvailableClasses] = useState<ClassInfo[]>([]);
+  const [importSyncMode, setImportSyncMode] = useState<'none' | 'current' | 'all' | 'selected'>('none');
+  const [importSelectedDeviceIds, setImportSelectedDeviceIds] = useState<string[]>([]);
+  const [importPullFace, setImportPullFace] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [sourceCloneId, setSourceCloneId] = useState<string>('');
   const [showSecrets, setShowSecrets] = useState(false);
@@ -497,6 +504,9 @@ export function DeviceDetailPage() {
           };
         }),
       );
+      setImportSyncMode('none');
+      setImportSelectedDeviceIds(schoolDevice?.id ? [schoolDevice.id] : []);
+      setImportPullFace(true);
       setIsImportOpen(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Import wizard ochishda xato';
@@ -506,6 +516,13 @@ export function DeviceDetailPage() {
 
   const updateImportRow = (idx: number, patch: Partial<ImportRow>) => {
     setImportRows((prev) => prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
+  };
+
+  const resolveImportTargetDeviceIds = (): string[] => {
+    if (importSyncMode === 'none') return [];
+    if (importSyncMode === 'current') return schoolDevice?.id ? [schoolDevice.id] : [];
+    if (importSyncMode === 'all') return allSchoolDevices.map((d) => d.id);
+    return importSelectedDeviceIds;
   };
 
   const saveImportRows = async () => {
@@ -521,11 +538,17 @@ export function DeviceDetailPage() {
       addToast(`Majburiy maydonlar to'ldirilmagan qatorlar: ${invalidIndexes.length}`, 'error');
       return;
     }
+    if (importSyncMode === 'selected' && importSelectedDeviceIds.length === 0) {
+      addToast('Sync mode selected uchun kamida 1 ta qurilma tanlang', 'error');
+      return;
+    }
 
     setImportLoading(true);
     let success = 0;
     let failed = 0;
+    let synced = 0;
     const nextRows = [...importRows];
+    const targetDeviceIds = resolveImportTargetDeviceIds();
 
     try {
       for (let i = 0; i < nextRows.length; i++) {
@@ -538,6 +561,17 @@ export function DeviceDetailPage() {
             existing = null;
           }
 
+          let studentId = existing?.id || '';
+          let faceImageBase64: string | undefined;
+          if (importPullFace && row.hasFace && localDevice?.id) {
+            try {
+              const face = await getUserFace(localDevice.id, row.employeeNo);
+              faceImageBase64 = face.imageBase64;
+            } catch {
+              // face sync is optional for import flow
+            }
+          }
+
           if (existing?.id) {
             await updateStudentProfile(existing.id, {
               firstName: row.firstName,
@@ -547,9 +581,11 @@ export function DeviceDetailPage() {
               parentPhone: row.parentPhone || undefined,
               gender: row.gender,
               deviceStudentId: row.employeeNo,
+              faceImageBase64,
             });
+            studentId = existing.id;
           } else {
-            await createSchoolStudent(auth.schoolId, {
+            const created = await createSchoolStudent(auth.schoolId, {
               firstName: row.firstName,
               lastName: row.lastName,
               fatherName: row.fatherName || undefined,
@@ -558,9 +594,33 @@ export function DeviceDetailPage() {
               gender: row.gender,
               deviceStudentId: row.employeeNo,
             });
+            studentId = created.id;
+            if (faceImageBase64) {
+              await updateStudentProfile(created.id, {
+                faceImageBase64,
+                classId: row.classId,
+                firstName: row.firstName,
+                lastName: row.lastName,
+                fatherName: row.fatherName || undefined,
+                parentPhone: row.parentPhone || undefined,
+                gender: row.gender,
+                deviceStudentId: row.employeeNo,
+              });
+            }
           }
 
-          nextRows[i] = { ...row, status: 'saved', error: undefined };
+          if (studentId && targetDeviceIds.length > 0) {
+            const ok = await syncStudentToDevices(studentId, targetDeviceIds);
+            if (ok) synced += 1;
+          }
+
+          nextRows[i] = {
+            ...row,
+            studentId,
+            faceSynced: Boolean(faceImageBase64),
+            status: 'saved',
+            error: undefined,
+          };
           success += 1;
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Saqlashda xato';
@@ -570,7 +630,10 @@ export function DeviceDetailPage() {
       }
 
       setImportRows(nextRows);
-      addToast(`Import yakunlandi: ${success} success, ${failed} failed`, failed > 0 ? 'error' : 'success');
+      addToast(
+        `Import yakunlandi: ${success} success, ${failed} failed, ${synced} sync`,
+        failed > 0 ? 'error' : 'success',
+      );
       if (success > 0) {
         await loadUsers(true);
       }
@@ -1121,6 +1184,53 @@ export function DeviceDetailPage() {
             </div>
             <div className="modal-body">
               <div className="notice">EmployeeNo, ism/familiya, sinf majburiy.</div>
+              <div className="form-group" style={{ marginTop: 10 }}>
+                <label>Saqlash siyosati (Sync mode)</label>
+                <select
+                  className="input"
+                  value={importSyncMode}
+                  onChange={(e) => setImportSyncMode(e.target.value as 'none' | 'current' | 'all' | 'selected')}
+                >
+                  <option value="none">Faqat DB</option>
+                  <option value="current">DB + joriy qurilma</option>
+                  <option value="all">DB + barcha active qurilmalar</option>
+                  <option value="selected">DB + tanlangan qurilmalar</option>
+                </select>
+              </div>
+              {importSyncMode === 'selected' && (
+                <div className="card" style={{ marginBottom: 10 }}>
+                  <div className="panel-header">
+                    <div className="panel-title">Target qurilmalar</div>
+                  </div>
+                  <div className="device-list">
+                    {allSchoolDevices.map((d) => {
+                      const checked = importSelectedDeviceIds.includes(d.id);
+                      return (
+                        <label key={d.id} className="device-item" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setImportSelectedDeviceIds((prev) =>
+                                checked ? prev.filter((id) => id !== d.id) : [...prev, d.id],
+                              )
+                            }
+                          />
+                          <span>{d.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <label className="checkbox" style={{ marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={importPullFace}
+                  onChange={(e) => setImportPullFace(e.target.checked)}
+                />
+                <span>Qurilmadagi mavjud rasmni ham olib `photoUrl`ga sync qilish</span>
+              </label>
               <div style={{ maxHeight: 420, overflow: 'auto', marginTop: 8 }}>
                 <table className="table">
                   <thead>

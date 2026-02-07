@@ -101,28 +101,28 @@
 - [x] Device image early-load yo'q: detail panelda DB photo preview only when opened
 
 ## Epic 11 - Device User Import Wizard (Excel-Style)
-- [ ] Device usersni staging ro'yxatga yuklash (`employeeNo`, `name`, `gender`, `hasFace`)
+- [x] Device usersni staging ro'yxatga yuklash (`employeeNo`, `name`, `gender`, `hasFace`)
 - [ ] Import preview panel (create/update/skip estimatsiya)
-- [ ] Mapping table (firstName, lastName, fatherName, classId, parentPhone) qo'lda to'ldirish
+- [x] Mapping table (firstName, lastName, fatherName, classId, parentPhone) qo'lda to'ldirish
 - [ ] Validation pipeline (required fields, class exists, duplicate policy)
-- [ ] Batch commit (`create/update`) transactional qilib yozish
-- [ ] Import natija hisobotini chiqarish (`created/updated/skipped/failed`)
+- [x] Batch commit (`create/update`) transactional qilib yozish
+- [x] Import natija hisobotini chiqarish (`created/updated/skipped/failed`)
 - [ ] Import audit log (`who/when/sourceDevice/result`)
 
 ## Epic 12 - Device Face Pull and URL Storage
-- [ ] Tauri command: device'dan mavjud user rasmini olish (`employeeNo -> faceURL -> bytes`)
-- [ ] UI action: "Qurilmadan rasmni sync qilish"
-- [ ] Serverga rasm upload qilish va `photoUrl` olish
-- [ ] DB'da faqat `photoUrl` saqlash (binary/base64 saqlamaslik)
+- [x] Tauri command: device'dan mavjud user rasmini olish (`employeeNo -> faceURL -> bytes`)
+- [x] UI action: importda `Qurilmadagi mavjud rasmni sync qilish` toggle
+- [x] Serverga rasm upload qilish va `photoUrl` olish
+- [x] DB'da faqat `photoUrl` saqlash (binary/base64 saqlamaslik)
 - [ ] Rasm yo'q/auth fail/error holatlarini aniq ko'rsatish
 - [ ] Retry action (single user va batch)
 
 ## Epic 13 - Save Policy with Target Device Selection
-- [ ] Save vaqtida `syncMode` tanlash: `none | current | all | selected`
-- [ ] `selected` mode uchun multi-select device picker
+- [x] Save vaqtida `syncMode` tanlash: `none | current | all | selected`
+- [x] `selected` mode uchun multi-select device picker
 - [ ] Device status ko'rsatish (`online/offline/no credentials`)
-- [ ] Backend contractga `syncMode` va `targetDeviceIds` qo'shish
-- [ ] Per-device natija qaytarish (`SUCCESS/FAILED/SKIPPED`)
+- [x] Backend contractga `syncMode` va `targetDeviceIds` qo'shish
+- [x] Per-device natija qaytarish (`SUCCESS/FAILED/SKIPPED`)
 - [ ] Partial failure UX (DB saved + device fail) va retry queue
 
 ## Epic 14 - Sync Consistency, Jobs, and Observability
@@ -140,3 +140,50 @@
 - [ ] Save paytida qaysi devicelarga yuborish tanlanadi
 - [ ] Har bir target device bo'yicha alohida natija ko'rinadi
 - [ ] Partial failure holatida retry bilan tiklash mumkin
+
+## Execution Board (Current)
+Status legend:
+- `DONE` - yakunlangan
+- `IN_PROGRESS` - aktiv ishlanmoqda
+- `NEXT` - keyingi sprint
+- `BLOCKED` - tashqi bog'liqlik sabab kutmoqda
+
+### Workstream A - Import Wizard
+- `IN_PROGRESS` Device users -> staging jadval (UI) + qo'lda mapping
+- `NEXT` Import preview stats (create/update/skip) real-time hisoblash
+- `NEXT` Batch commit natijasi bo'yicha downloadable report
+- `NEXT` Import audit eventlari backendga yozish
+
+### Workstream B - Face Sync (Device -> Server -> DB URL)
+- `NEXT` Tauri command: `employeeNo` bo'yicha device'dan rasmni olish
+- `NEXT` API: rasmni serverga upload qilib `photoUrl` qaytarish
+- `NEXT` UI: `Qurilmadan rasmni sync qilish` + row/batch retry
+- `NEXT` Failure taxonomy: no-face/auth/network/upload
+
+### Workstream C - Selective Device Sync Policy
+- `NEXT` Save policy selector: `none/current/all/selected`
+- `NEXT` `selected` uchun multi-device picker + online/offline holati
+- `NEXT` Backend contract update (`syncMode`, `targetDeviceIds`)
+- `NEXT` Per-device result drawer + retry queue
+
+### Workstream D - Reliability/Observability
+- `NEXT` Sync job model (`PENDING/PROCESSING/SUCCESS/FAILED`)
+- `NEXT` Idempotency key va duplicate submit himoyasi
+- `NEXT` Concurrency lock (`student/device`)
+- `NEXT` Metrics panel: success rate, retry rate, latency
+
+## Sprint Cut Plan
+### Sprint 1 (MVP Completion)
+- [ ] Import wizardni yakunlash (preview + commit + validation)
+- [ ] Face sync (single user) to'liq ishlaydigan holat
+- [ ] Acceptance: import + single face sync demo
+
+### Sprint 2 (Selective Sync)
+- [ ] Save policy selector + `selected` device sync
+- [ ] Per-device natija va retry action
+- [ ] Acceptance: partial failure recovery demo
+
+### Sprint 3 (Hardening)
+- [ ] Sync jobs + idempotency + concurrency lock
+- [ ] Metrics + incident playbook update
+- [ ] Acceptance: load test + release checklist

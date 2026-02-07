@@ -27,6 +27,7 @@ fn main() {
             // User management
             fetch_users,
             delete_user,
+            get_user_face,
             recreate_user,
             // Provisioning
             get_provisioning,
