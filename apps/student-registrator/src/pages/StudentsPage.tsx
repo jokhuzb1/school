@@ -3,6 +3,8 @@ import {
   checkStudentOnDevice,
   fetchClasses,
   fetchDevices,
+  fetchUsers,
+  getUserFace,
   fetchStudentDiagnostics,
   fetchSchoolDevices,
   getAuthUser,
@@ -46,6 +48,11 @@ type StudentLiveState = {
   running: boolean;
   checkedAt?: string;
   byDeviceId: Record<string, LiveDeviceResult>;
+};
+
+type DeviceOnlyMeta = {
+  localDeviceId: string;
+  hasFace: boolean;
 };
 
 const PAGE_SIZE = 25;
@@ -154,7 +161,13 @@ export function StudentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [diagnostics, setDiagnostics] = useState<StudentDiagnosticsResponse | null>(null);
+  const [deviceDiscoveredRows, setDeviceDiscoveredRows] = useState<StudentDiagnosticsRow[]>([]);
+  const [deviceOnlyMetaByEmployeeNo, setDeviceOnlyMetaByEmployeeNo] = useState<
+    Record<string, DeviceOnlyMeta>
+  >({});
+  const [deviceOnlyFaceByEmployeeNo, setDeviceOnlyFaceByEmployeeNo] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [deviceUsersLoading, setDeviceUsersLoading] = useState(false);
   const [liveStateByStudent, setLiveStateByStudent] = useState<Record<string, StudentLiveState>>({});
 
   const [page, setPage] = useState(1);
@@ -162,7 +175,34 @@ export function StudentsPage() {
   const { addToast } = useGlobalToast();
   const schoolId = useMemo(() => getAuthUser()?.schoolId || '', []);
 
-  const allRows = useMemo(() => diagnostics?.data || [], [diagnostics]);
+  const dbDeviceStudentIds = useMemo(() => {
+    const ids = new Set<string>();
+    (diagnostics?.data || []).forEach((row) => {
+      const employeeNo = (row.deviceStudentId || '').trim();
+      if (employeeNo) ids.add(employeeNo);
+    });
+    return ids;
+  }, [diagnostics]);
+
+  const filteredDeviceRows = useMemo(() => {
+    if (selectedClassId) return [];
+    const query = debouncedSearchQuery.trim().toLowerCase();
+    return deviceDiscoveredRows.filter((row) => {
+      const employeeNo = (row.deviceStudentId || '').trim();
+      if (!employeeNo || dbDeviceStudentIds.has(employeeNo)) return false;
+      if (!query) return true;
+      return (
+        (row.studentName || '').toLowerCase().includes(query) ||
+        employeeNo.toLowerCase().includes(query) ||
+        (row.className || '').toLowerCase().includes(query)
+      );
+    });
+  }, [dbDeviceStudentIds, debouncedSearchQuery, deviceDiscoveredRows, selectedClassId]);
+
+  const allRows = useMemo(
+    () => [...(diagnostics?.data || []), ...filteredDeviceRows],
+    [diagnostics, filteredDeviceRows],
+  );
 
   const { sortedData, sortColumn, sortDirection, toggleSort } = useTableSort({
     data: allRows,
@@ -223,6 +263,159 @@ export function StudentsPage() {
   useEffect(() => {
     loadDiagnostics();
   }, [loadDiagnostics]);
+
+  useEffect(() => {
+    const loadDeviceUsers = async () => {
+      if (!schoolId || backendDevices.length === 0 || localDevices.length === 0) {
+        setDeviceDiscoveredRows([]);
+        setDeviceOnlyMetaByEmployeeNo({});
+        return;
+      }
+
+      setDeviceUsersLoading(true);
+      try {
+        const byEmployeeNo = new Map<string, StudentDiagnosticsRow>();
+        const nextMetaByEmployeeNo: Record<string, DeviceOnlyMeta> = {};
+
+        await Promise.all(
+          backendDevices.map(async (backendDevice) => {
+            const localDevice = resolveLocalDeviceForBackend(backendDevice, localDevices).localDevice;
+            if (!localDevice?.id) return;
+
+            let offset = 0;
+            const limit = 100;
+            for (;;) {
+              const response = await fetchUsers(localDevice.id, { offset, limit });
+              const list = response.UserInfoSearch?.UserInfo || [];
+              const total = response.UserInfoSearch?.totalMatches || 0;
+              if (list.length === 0) break;
+
+              list.forEach((user) => {
+                const employeeNo = (user.employeeNo || '').trim();
+                if (!employeeNo) return;
+                const hasFace = (user.numOfFace || 0) > 0;
+
+                const existing = byEmployeeNo.get(employeeNo);
+                if (!existing) {
+                  const fullName = (user.name || employeeNo).trim();
+                  const nameParts = extractNameComponents(fullName);
+                  nextMetaByEmployeeNo[employeeNo] = {
+                    localDeviceId: localDevice.id,
+                    hasFace,
+                  };
+                  byEmployeeNo.set(employeeNo, {
+                    studentId: `device-only-${employeeNo}`,
+                    studentName: fullName,
+                    firstName: nameParts.firstName || undefined,
+                    lastName: nameParts.lastName || undefined,
+                    fatherName: nameParts.fatherName || null,
+                    classId: null,
+                    className: "Qurilmada (DB yo'q)",
+                    deviceStudentId: employeeNo,
+                    photoUrl: null,
+                    devices: [
+                      {
+                        deviceId: backendDevice.id,
+                        deviceName: backendDevice.name,
+                        deviceExternalId: backendDevice.deviceId || null,
+                        status: 'SUCCESS',
+                        updatedAt: new Date().toISOString(),
+                        lastError: null,
+                      },
+                    ],
+                  });
+                  return;
+                }
+
+                if (!existing.devices.some((item) => item.deviceId === backendDevice.id)) {
+                  existing.devices.push({
+                    deviceId: backendDevice.id,
+                    deviceName: backendDevice.name,
+                    deviceExternalId: backendDevice.deviceId || null,
+                    status: 'SUCCESS',
+                    updatedAt: new Date().toISOString(),
+                    lastError: null,
+                  });
+                }
+
+                const currentMeta = nextMetaByEmployeeNo[employeeNo];
+                if (!currentMeta || (!currentMeta.hasFace && hasFace)) {
+                  nextMetaByEmployeeNo[employeeNo] = {
+                    localDeviceId: localDevice.id,
+                    hasFace,
+                  };
+                }
+              });
+
+              offset += list.length;
+              if (offset >= total) break;
+            }
+          }),
+        );
+
+        setDeviceDiscoveredRows(Array.from(byEmployeeNo.values()));
+        setDeviceOnlyMetaByEmployeeNo(nextMetaByEmployeeNo);
+      } catch (err) {
+        console.error('Failed to load device-discovered users:', err);
+        setDeviceDiscoveredRows([]);
+        setDeviceOnlyMetaByEmployeeNo({});
+      } finally {
+        setDeviceUsersLoading(false);
+      }
+    };
+
+    void loadDeviceUsers();
+  }, [backendDevices, localDevices, schoolId]);
+
+  useEffect(() => {
+    const pending = filteredDeviceRows
+      .map((row) => (row.deviceStudentId || '').trim())
+      .filter((employeeNo) => {
+        if (!employeeNo) return false;
+        if (deviceOnlyFaceByEmployeeNo[employeeNo]) return false;
+        const meta = deviceOnlyMetaByEmployeeNo[employeeNo];
+        return Boolean(meta?.localDeviceId && meta.hasFace);
+      });
+
+    if (pending.length === 0) return;
+
+    let cancelled = false;
+    const run = async () => {
+      const queue = [...new Set(pending)];
+      const concurrency = Math.min(4, queue.length);
+      let cursor = 0;
+
+      const worker = async () => {
+        while (cursor < queue.length) {
+          const currentIndex = cursor;
+          cursor += 1;
+          const employeeNo = queue[currentIndex];
+          const meta = deviceOnlyMetaByEmployeeNo[employeeNo];
+          if (!meta?.localDeviceId) continue;
+          try {
+            const face = await getUserFace(meta.localDeviceId, employeeNo);
+            if (cancelled || !face.imageBase64) continue;
+            const image = face.imageBase64.startsWith('data:image')
+              ? face.imageBase64
+              : `data:image/jpeg;base64,${face.imageBase64}`;
+            setDeviceOnlyFaceByEmployeeNo((prev) => ({
+              ...prev,
+              [employeeNo]: image,
+            }));
+          } catch {
+            // best-effort only
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [deviceOnlyFaceByEmployeeNo, deviceOnlyMetaByEmployeeNo, filteredDeviceRows]);
 
   const buildPhotoUrl = (url?: string | null) => {
     return buildBackendPhotoUrl(BACKEND_URL, url);
@@ -339,7 +532,9 @@ export function StudentsPage() {
     {
       header: 'Rasm',
       cell: (row) => {
-        const url = buildPhotoUrl(row.photoUrl);
+        const employeeNo = (row.deviceStudentId || '').trim();
+        const deviceFace = employeeNo ? deviceOnlyFaceByEmployeeNo[employeeNo] : '';
+        const url = buildPhotoUrl(row.photoUrl) || deviceFace;
         if (!url) return <span className="text-secondary">-</span>;
         return <img src={url} alt="photo" className="student-avatar" />;
       },
@@ -397,7 +592,7 @@ export function StudentsPage() {
       ),
       width: '100px',
     }
-  ], [backendDevices, liveStateByStudent, page]);
+  ], [backendDevices, deviceOnlyFaceByEmployeeNo, liveStateByStudent, page]);
 
   return (
     <div className="page">
@@ -499,7 +694,7 @@ export function StudentsPage() {
         <DataTable
           data={paginatedRows}
           columns={columns}
-          loading={loading}
+          loading={loading || deviceUsersLoading}
           rowKey="studentId"
           selectable
           selectedKeys={selectedKeys}
