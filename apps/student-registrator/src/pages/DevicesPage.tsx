@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   fetchDevices,
   createDevice,
   updateDevice,
   testDeviceConnection,
+  probeDeviceConnection,
   getAuthUser,
   fetchSchoolDevices,
   createSchoolDevice,
@@ -21,6 +23,7 @@ import type { DeviceConfig, SchoolDeviceInfo } from '../types';
 import type { WebhookInfo } from '../api';
 
 export function DevicesPage() {
+  const navigate = useNavigate();
   const [credentials, setCredentials] = useState<DeviceConfig[]>([]);
   const [editingBackendId, setEditingBackendId] = useState<string | null>(null);
   const [editingLocalId, setEditingLocalId] = useState<string | null>(null);
@@ -198,6 +201,26 @@ export function DevicesPage() {
       const isCredentialsOnlyMode = isCredentialsModalOpen && !isModalOpen;
       const trimmedName = formData.name.trim();
       const trimmedDeviceId = formData.deviceId.trim();
+      const hostTrimmed = formData.host.trim();
+      const usernameTrimmed = formData.username.trim();
+      const passwordTrimmed = formData.password.trim();
+      const credentialsProvided =
+        hostTrimmed.length > 0 &&
+        usernameTrimmed.length > 0 &&
+        passwordTrimmed.length > 0;
+      const anyCredentialField =
+        hostTrimmed.length > 0 ||
+        usernameTrimmed.length > 0 ||
+        passwordTrimmed.length > 0;
+
+      if (anyCredentialField && !credentialsProvided) {
+        addToast('Ulanish uchun host, username va parolni to\'liq kiriting', 'error');
+        return;
+      }
+      if (anyCredentialField && (!Number.isFinite(formData.port) || formData.port <= 0 || formData.port > 65535)) {
+        addToast('Port 1-65535 oralig\'ida bo\'lishi kerak', 'error');
+        return;
+      }
       if (!isCredentialsOnlyMode && !trimmedName) {
         addToast('Qurilma nomi majburiy', 'error');
         return;
@@ -227,13 +250,31 @@ export function DevicesPage() {
           });
           addToast('Qurilma yangilandi', 'success');
         } else {
-          if (!trimmedDeviceId) {
-            addToast('Device ID majburiy', 'error');
+          let resolvedDeviceId = trimmedDeviceId;
+          if (!resolvedDeviceId && credentialsProvided) {
+            const probe = await probeDeviceConnection({
+              host: hostTrimmed,
+              port: formData.port,
+              username: usernameTrimmed,
+              password: passwordTrimmed,
+            });
+            if (!probe.ok) {
+              addToast(probe.message || 'Qurilmaga ulanib bo\'lmadi', 'error');
+              return;
+            }
+            if (!probe.deviceId) {
+              addToast('Qurilmadan deviceId olinmadi, qo\'lda kiriting', 'error');
+              return;
+            }
+            resolvedDeviceId = probe.deviceId.trim();
+          }
+          if (!resolvedDeviceId) {
+            addToast('Device ID yoki ulanish ma\'lumotlarini kiriting', 'error');
             return;
           }
           backendDevice = await createSchoolDevice(schoolId, {
             name: trimmedName,
-            deviceId: trimmedDeviceId,
+            deviceId: resolvedDeviceId,
             type: formData.deviceType,
             location: formData.location.trim() || undefined,
           });
@@ -241,11 +282,8 @@ export function DevicesPage() {
         }
         await loadBackendDevices();
       }
-
-      const credentialsProvided =
-        formData.host.trim() && formData.username.trim() && formData.password.trim();
-      const hostKey = formData.host.trim().toLowerCase();
-      const usernameKey = formData.username.trim().toLowerCase();
+      const hostKey = hostTrimmed.toLowerCase();
+      const usernameKey = usernameTrimmed.toLowerCase();
 
       const existingLocal =
         (editingLocalId ? credentials.find((item) => item.id === editingLocalId) : null) ||
@@ -269,10 +307,10 @@ export function DevicesPage() {
         } else {
           const payload: Omit<DeviceConfig, 'id'> = {
             backendId: backendDevice.id,
-            host: formData.host.trim(),
+            host: hostTrimmed,
             port: formData.port,
-            username: formData.username.trim(),
-            password: formData.password,
+            username: usernameTrimmed,
+            password: passwordTrimmed,
             deviceId: backendDevice.deviceId || trimmedDeviceId || undefined,
           };
 
@@ -810,6 +848,13 @@ export function DevicesPage() {
                       <div className="device-item-actions">
                         <button
                           className="btn-icon"
+                          onClick={() => navigate(`/devices/${backend.id}`)}
+                          title="Detail"
+                        >
+                          <Icons.Eye />
+                        </button>
+                        <button
+                          className="btn-icon"
                           onClick={() => handleTestConnection(backend)}
                           title="Ulanishni tekshirish"
                           disabled={testingId === backend.id}
@@ -900,13 +945,12 @@ export function DevicesPage() {
                 </div>
 
                 <div className="form-group">
-                  <label>Device ID (Hikvision) {!editingBackendId ? '*' : ''}</label>
+                  <label>Device ID (Hikvision)</label>
                   <input
                     className="input"
                     value={formData.deviceId}
                     onChange={(e) => setFormData({ ...formData, deviceId: e.target.value })}
-                    placeholder="Masalan: 1maktab"
-                    required={!editingBackendId}
+                    placeholder="Bo'sh qoldirsangiz ulanishdan keyin avtomatik olinadi"
                   />
                 </div>
 
@@ -921,6 +965,50 @@ export function DevicesPage() {
                     <option value="EXIT">Chiqish</option>
                   </select>
                 </div>
+
+                <div className="form-group">
+                  <label>IP manzil (ixtiyoriy, auto detect uchun)</label>
+                  <input
+                    className="input"
+                    value={formData.host}
+                    onChange={(e) => setFormData({ ...formData, host: e.target.value })}
+                    placeholder="192.168.1.100"
+                  />
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Port</label>
+                    <input
+                      className="input"
+                      type="number"
+                      value={formData.port}
+                      onChange={(e) => setFormData({ ...formData, port: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Username (ixtiyoriy)</label>
+                    <input
+                      className="input"
+                      value={formData.username}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Parol (ixtiyoriy)</label>
+                  <input
+                    className="input"
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  />
+                </div>
+
+                <p className="notice">
+                  Agar `deviceId` kiritilmasa va ulanish ma'lumotlari berilsa, tizim qurilmadan `deviceId` ni avtomatik topadi.
+                </p>
 
                 <div className="form-actions">
                   <button

@@ -430,6 +430,30 @@ export async function getWebhookInfo(schoolId: string): Promise<WebhookInfo> {
   return res.json();
 }
 
+export async function rotateWebhookSecret(
+  schoolId: string,
+  direction: 'in' | 'out',
+): Promise<{ ok: boolean; info: WebhookInfo }> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/webhook/rotate`, {
+    method: 'POST',
+    body: JSON.stringify({ direction }),
+  });
+  await assertSchoolScopedResponse(res, 'Failed to rotate webhook secret');
+  return res.json();
+}
+
+export async function testWebhookEndpoint(
+  schoolId: string,
+  direction: 'in' | 'out',
+): Promise<{ ok: boolean; direction: 'in' | 'out'; method: string; path: string; testedAt: string }> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/webhook/test`, {
+    method: 'POST',
+    body: JSON.stringify({ direction }),
+  });
+  await assertSchoolScopedResponse(res, 'Failed to test webhook endpoint');
+  return res.json();
+}
+
 export async function createSchoolDevice(
   schoolId: string,
   payload: { name: string; deviceId: string; type?: string; location?: string },
@@ -456,6 +480,17 @@ export async function updateSchoolDevice(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(text || 'Failed to update backend device');
+  }
+  return res.json();
+}
+
+export async function getDeviceWebhookHealth(
+  id: string,
+): Promise<{ ok: boolean; deviceId: string; lastWebhookEventAt: string | null; lastSeenAt: string | null }> {
+  const res = await fetchWithAuth(`${BACKEND_URL}/devices/${id}/webhook-health`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || 'Failed to fetch webhook health');
   }
   return res.json();
 }
@@ -579,6 +614,40 @@ export async function testDeviceConnection(deviceId: string): Promise<DeviceConn
   return invoke<DeviceConnectionResult>('test_device_connection', { deviceId });
 }
 
+export async function probeDeviceConnection(params: {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+}): Promise<DeviceConnectionResult> {
+  return invoke<DeviceConnectionResult>('probe_device_connection', {
+    host: params.host,
+    port: params.port,
+    username: params.username,
+    password: params.password,
+  });
+}
+
+export async function getDeviceCapabilities(deviceId: string): Promise<any> {
+  return invoke<any>('get_device_capabilities', { deviceId });
+}
+
+export async function getDeviceConfiguration(deviceId: string): Promise<any> {
+  return invoke<any>('get_device_configuration', { deviceId });
+}
+
+export async function updateDeviceConfiguration(params: {
+  deviceId: string;
+  configType: 'time' | 'ntpServers' | 'networkInterfaces';
+  payload: Record<string, unknown>;
+}): Promise<any> {
+  return invoke<any>('update_device_configuration', {
+    deviceId: params.deviceId,
+    configType: params.configType,
+    payload: params.payload,
+  });
+}
+
 export async function checkStudentOnDevice(
   deviceId: string,
   employeeNo: string,
@@ -631,11 +700,14 @@ export async function registerStudent(
 
 // ============ User Management ============
 
-export async function fetchUsers(deviceId: string): Promise<UserInfoSearchResponse> {
+export async function fetchUsers(
+  deviceId: string,
+  options?: { offset?: number; limit?: number },
+): Promise<UserInfoSearchResponse> {
   return invoke<UserInfoSearchResponse>('fetch_users', { 
     deviceId,
-    offset: 0,
-    limit: 30,
+    offset: options?.offset ?? 0,
+    limit: options?.limit ?? 30,
   });
 }
 

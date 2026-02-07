@@ -192,6 +192,22 @@ async function ensureProvisioningAuth(
   reply: any,
   schoolId: string,
 ): Promise<ProvisioningAuth | null> {
+  const tokenFromHeader =
+    request.headers?.["x-provisioning-token"] ||
+    request.headers?.["X-Provisioning-Token"];
+  const tokenFromQuery = request.query?.provisioningToken;
+  const authHeader = request.headers?.authorization as string | undefined;
+  const bearerToken = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : undefined;
+  const providedToken = String(
+    tokenFromHeader || tokenFromQuery || bearerToken || "",
+  ).trim();
+
+  if (PROVISIONING_TOKEN && providedToken === PROVISIONING_TOKEN) {
+    return { user: null, tokenAuth: true };
+  }
+
   try {
     await request.jwtVerify();
     const user = request.user;
@@ -1635,7 +1651,7 @@ export default async function (fastify: FastifyInstance) {
             }
           }
 
-          let studentRecord;
+          let studentRecord: Prisma.StudentGetPayload<{}>;
           let deviceStudentId =
             providedDeviceStudentId !== "" ? providedDeviceStudentId : null;
 

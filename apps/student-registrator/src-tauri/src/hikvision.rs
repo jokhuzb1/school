@@ -10,7 +10,7 @@ use std::time::Duration;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 8;
 const MAX_FACE_IMAGE_BYTES: usize = 200 * 1024;
-const DEBUG_HIKVISION: bool = true;
+const DEBUG_HIKVISION: bool = cfg!(debug_assertions);
 
 fn redact(value: &str) -> String {
     let max = 300usize;
@@ -681,6 +681,59 @@ impl HikvisionClient {
                 error_msg: Some(e),
             },
         }
+    }
+
+    pub async fn get_isapi_json(&self, path: &str) -> Result<Value, String> {
+        let clean = path.trim().trim_start_matches('/');
+        let url = format!("{}/{}{}", self.base_url(), clean, if clean.contains('?') { "" } else { "?format=json" });
+        let text = self
+            .auth_request_json(reqwest::Method::GET, &url, None)
+            .await?;
+        serde_json::from_str::<Value>(&text).map_err(|e| e.to_string())
+    }
+
+    pub async fn put_isapi_json(&self, path: &str, payload: Value) -> Result<Value, String> {
+        let clean = path.trim().trim_start_matches('/');
+        let url = format!("{}/{}{}", self.base_url(), clean, if clean.contains('?') { "" } else { "?format=json" });
+        let text = self
+            .auth_request_json(reqwest::Method::PUT, &url, Some(payload))
+            .await?;
+        serde_json::from_str::<Value>(&text).map_err(|e| e.to_string())
+    }
+
+    pub async fn probe_capabilities(&self) -> Value {
+        let probes = vec![
+            ("deviceInfo", "ISAPI/System/deviceInfo?format=json"),
+            ("status", "ISAPI/System/status?format=json"),
+            ("time", "ISAPI/System/time?format=json"),
+            ("ntpServers", "ISAPI/System/Network/ntpServers?format=json"),
+            ("networkInterfaces", "ISAPI/System/Network/interfaces?format=json"),
+            ("systemCapabilities", "ISAPI/System/capabilities?format=json"),
+        ];
+
+        let mut supported = serde_json::Map::new();
+        let mut details = serde_json::Map::new();
+
+        for (key, path) in probes {
+            match self.get_isapi_json(path).await {
+                Ok(value) => {
+                    supported.insert(key.to_string(), Value::Bool(true));
+                    details.insert(key.to_string(), value);
+                }
+                Err(err) => {
+                    supported.insert(key.to_string(), Value::Bool(false));
+                    details.insert(
+                        format!("{}_error", key),
+                        Value::String(err),
+                    );
+                }
+            }
+        }
+
+        json!({
+            "supported": supported,
+            "details": details
+        })
     }
 
     /// Fetch face image from device to reuse it
