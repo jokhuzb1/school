@@ -656,6 +656,52 @@ export default async function (fastify: FastifyInstance) {
     },
   );
 
+  // Fast lookup from Hikvision employeeNo/deviceStudentId -> DB student detail.
+  fastify.get(
+    "/schools/:schoolId/students/by-device-student-id/:deviceStudentId",
+    { preHandler: [(fastify as any).authenticate] } as any,
+    async (request: any, reply) => {
+      try {
+        const { schoolId, deviceStudentId } = request.params as {
+          schoolId: string;
+          deviceStudentId: string;
+        };
+        const user = request.user;
+
+        requireRoles(user, ["SCHOOL_ADMIN", "TEACHER", "GUARD"]);
+        requireSchoolScope(user, schoolId);
+
+        const trimmedId = String(deviceStudentId || "").trim();
+        if (!trimmedId) {
+          return reply.status(400).send({ error: "deviceStudentId is required" });
+        }
+
+        const student = await prisma.student.findFirst({
+          where: {
+            schoolId,
+            deviceStudentId: trimmedId,
+            isActive: true,
+          },
+          include: {
+            class: { select: { id: true, name: true } },
+          },
+        });
+
+        if (!student) {
+          return reply.status(404).send({ error: "Student not found" });
+        }
+
+        if (user.role === "TEACHER" && student.classId) {
+          await requireTeacherClassScope(user, student.classId);
+        }
+
+        return student;
+      } catch (err) {
+        return sendHttpError(reply, err);
+      }
+    },
+  );
+
   fastify.post(
     "/schools/:schoolId/students",
     { preHandler: [(fastify as any).authenticate] } as any,

@@ -252,3 +252,17 @@ Exit criteria:
 - plan, tasks, API contract, rollback, release notes updated
 5. UAT:
 - school admin operator bilan real scenario sign-off
+
+## Addendum - Student Sync Strategy (Final)
+1. Source of truth:
+- Primary source: `DB (Student)`; Hikvision device projection sifatida ishlaydi.
+2. Read strategy:
+- Device users list: minimal fields faqat device API dan.
+- Student detail: row clickdan keyin `deviceStudentId` orqali DB lookup (`lazy load`).
+3. Edit strategy (DB + Device):
+- Step 1: DB update.
+- Step 2: Device update/recreate.
+- Step 3: Device update fail bo'lsa DB rollback (kompensatsion tranzaksiya).
+4. Pagination:
+- Device users endpoint (`offset/limit`) asosida incremental loading.
+- UI `loaded/total` ko'rsatadi, yirik ro'yxatlarda first paint tez qoladi.

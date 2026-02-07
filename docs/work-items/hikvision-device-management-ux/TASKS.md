@@ -91,3 +91,11 @@
 - [x] Critical flowlarda blocker bug yo'q
 - [x] Capability-driven config full flow production-ready
 - [x] Operations + SLO + compliance artifacts completed
+
+## Addendum - Device User UX/Sync Deepening
+- [x] Users list default minimal fields (name, employeeNo, gender, hasFace)
+- [x] Student DB detail lazy-load: only row clickda backenddan olinadi
+- [x] Pagination state explicit: loaded/total va load-more control
+- [x] `deviceStudentId` bo'yicha school-scoped backend lookup endpoint qo'shildi
+- [x] Edit flow DB + device uchun kompensatsion tranzaksiya (rollback on device failure)
+- [x] Device image early-load yo'q: detail panelda DB photo preview only when opened

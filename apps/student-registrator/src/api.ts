@@ -283,6 +283,10 @@ export interface SchoolStudent {
   photoUrl?: string | null;
 }
 
+export interface StudentProfileDetail extends SchoolStudent {
+  parentPhone?: string | null;
+}
+
 export interface SchoolStudentsResponse {
   data: SchoolStudent[];
   total: number;
@@ -377,6 +381,17 @@ export async function fetchSchoolStudents(
   const suffix = query.toString() ? `?${query.toString()}` : '';
   const res = await fetchWithAuth(`${BACKEND_URL}/schools/${schoolId}/students${suffix}`);
   if (!res.ok) throw new Error('Failed to fetch students');
+  return res.json();
+}
+
+export async function fetchStudentByDeviceStudentId(
+  schoolId: string,
+  deviceStudentId: string,
+): Promise<StudentProfileDetail> {
+  const res = await fetchWithAuth(
+    `${BACKEND_URL}/schools/${schoolId}/students/by-device-student-id/${encodeURIComponent(deviceStudentId)}`,
+  );
+  await assertSchoolScopedResponse(res, 'Failed to fetch student by device student id');
   return res.json();
 }
 

@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  BACKEND_URL,
   cloneDeviceToDevice,
   cloneStudentsToDevice,
   deleteUser,
   fetchDevices,
+  fetchStudentByDeviceStudentId,
   getDeviceCapabilities,
   getDeviceConfiguration,
   fetchSchoolDevices,
   fetchUsers,
+  fileToFaceBase64,
   getDeviceWebhookHealth,
   getAuthUser,
   getWebhookInfo,
@@ -17,8 +20,10 @@ import {
   testDeviceConnection,
   testWebhookEndpoint,
   updateDeviceConfiguration,
+  updateStudentProfile,
   type DeviceConfig,
   type SchoolDeviceInfo,
+  type StudentProfileDetail,
   type UserInfoEntry,
   type WebhookInfo,
 } from '../api';
@@ -42,8 +47,20 @@ export function DeviceDetailPage() {
   const [webhookInfo, setWebhookInfo] = useState<WebhookInfo | null>(null);
   const [users, setUsers] = useState<UserInfoEntry[]>([]);
   const [usersOffset, setUsersOffset] = useState(0);
+  const [usersTotal, setUsersTotal] = useState(0);
   const [hasMoreUsers, setHasMoreUsers] = useState(true);
   const [selectedUser, setSelectedUser] = useState<UserInfoEntry | null>(null);
+  const [selectedStudentDetail, setSelectedStudentDetail] = useState<StudentProfileDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editFatherName, setEditFatherName] = useState('');
+  const [editParentPhone, setEditParentPhone] = useState('');
+  const [editClassId, setEditClassId] = useState('');
+  const [editGender, setEditGender] = useState<'MALE' | 'FEMALE'>('MALE');
+  const [editFaceBase64, setEditFaceBase64] = useState<string>('');
+  const [editFacePreview, setEditFacePreview] = useState<string>('');
+  const [isEditingUser, setIsEditingUser] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [sourceCloneId, setSourceCloneId] = useState<string>('');
   const [showSecrets, setShowSecrets] = useState(false);
@@ -63,6 +80,12 @@ export function DeviceDetailPage() {
     if (Number.isNaN(last)) return false;
     return Date.now() - last < 2 * 60 * 60 * 1000;
   }, [schoolDevice?.lastSeenAt]);
+
+  const buildPhotoUrl = (value?: string | null): string => {
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value)) return value;
+    return `${BACKEND_URL}${value.startsWith('/') ? '' : '/'}${value}`;
+  };
 
   const findLocalForBackend = (
     backend: SchoolDeviceInfo,
@@ -121,9 +144,12 @@ export function DeviceDetailPage() {
       const offset = reset ? 0 : usersOffset;
       const result = await fetchUsers(localDevice.id, { offset, limit: 30 });
       const list = result.UserInfoSearch?.UserInfo || [];
+      const total = result.UserInfoSearch?.totalMatches || 0;
+      const loaded = offset + list.length;
       setUsers((prev) => (reset ? list : [...prev, ...list]));
-      setUsersOffset(offset + list.length);
-      setHasMoreUsers(list.length >= 30);
+      setUsersTotal(total);
+      setUsersOffset(loaded);
+      setHasMoreUsers(loaded < total);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Qurilma userlarini olishda xato';
       addToast(message, 'error');
@@ -210,6 +236,109 @@ export function DeviceDetailPage() {
         } else {
           addToast(raw || 'Recreate jarayonida xato', 'error');
         }
+      }
+    });
+  };
+
+  const handleSelectUser = async (user: UserInfoEntry) => {
+    setSelectedUser(user);
+    setSelectedStudentDetail(null);
+    setIsEditingUser(false);
+    setEditFaceBase64('');
+    setEditFacePreview('');
+
+    const auth = getAuthUser();
+    if (!auth?.schoolId || !user.employeeNo) return;
+
+    setDetailLoading(true);
+    try {
+      const detail = await fetchStudentByDeviceStudentId(auth.schoolId, user.employeeNo);
+      setSelectedStudentDetail(detail);
+      setEditFirstName(detail.firstName || '');
+      setEditLastName(detail.lastName || '');
+      setEditFatherName(detail.fatherName || '');
+      setEditParentPhone(detail.parentPhone || '');
+      setEditClassId(detail.classId || '');
+      setEditGender((detail.gender || 'MALE') as 'MALE' | 'FEMALE');
+      setEditFacePreview(buildPhotoUrl(detail.photoUrl));
+    } catch {
+      setSelectedStudentDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleFaceFileChange = async (file?: File) => {
+    if (!file) return;
+    try {
+      const base64 = await fileToFaceBase64(file);
+      setEditFaceBase64(base64);
+      setEditFacePreview(`data:image/jpeg;base64,${base64}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Rasmni qayta ishlashda xato';
+      addToast(message, 'error');
+    }
+  };
+
+  const handleSaveUserEdit = async () => {
+    if (!selectedUser?.employeeNo || !selectedStudentDetail?.id || !localDevice?.id) {
+      addToast('Edit uchun ma\'lumot yetarli emas', 'error');
+      return;
+    }
+
+    const oldState = {
+      firstName: selectedStudentDetail.firstName || '',
+      lastName: selectedStudentDetail.lastName || '',
+      fatherName: selectedStudentDetail.fatherName || '',
+      parentPhone: selectedStudentDetail.parentPhone || '',
+      classId: selectedStudentDetail.classId || '',
+      gender: selectedStudentDetail.gender || 'MALE',
+      photoUrl: selectedStudentDetail.photoUrl || '',
+    };
+
+    const fullName = `${editLastName} ${editFirstName}`.trim();
+    await withBusy(`save-edit-${selectedUser.employeeNo}`, async () => {
+      try {
+        await updateStudentProfile(selectedStudentDetail.id, {
+          firstName: editFirstName,
+          lastName: editLastName,
+          fatherName: editFatherName || undefined,
+          parentPhone: editParentPhone || undefined,
+          classId: editClassId || undefined,
+          gender: editGender,
+          deviceStudentId: selectedUser.employeeNo,
+          faceImageBase64: editFaceBase64 || undefined,
+        });
+
+        const recreate = await recreateUser(
+          localDevice.id,
+          selectedUser.employeeNo,
+          fullName,
+          editGender.toLowerCase(),
+          false,
+          !editFaceBase64,
+          editFaceBase64 || undefined,
+        );
+
+        if (!recreate.faceUpload?.ok) {
+          throw new Error(recreate.faceUpload?.errorMsg || 'Device edit failed');
+        }
+
+        addToast('DB + Device edit muvaffaqiyatli', 'success');
+        setIsEditingUser(false);
+        await Promise.all([loadUsers(true), handleSelectUser({ ...selectedUser, name: fullName })]);
+      } catch (err) {
+        await updateStudentProfile(selectedStudentDetail.id, {
+          firstName: oldState.firstName,
+          lastName: oldState.lastName,
+          fatherName: oldState.fatherName || undefined,
+          parentPhone: oldState.parentPhone || undefined,
+          classId: oldState.classId || undefined,
+          gender: oldState.gender as 'MALE' | 'FEMALE',
+          deviceStudentId: selectedUser.employeeNo,
+        }).catch(() => undefined);
+        const message = err instanceof Error ? err.message : 'Edit jarayonida xato';
+        addToast(`Edit rollback: ${message}`, 'error');
       }
     });
   };
@@ -316,6 +445,9 @@ export function DeviceDetailPage() {
 
   useEffect(() => {
     if (tab === 'users') {
+      setSelectedUser(null);
+      setSelectedStudentDetail(null);
+      setIsEditingUser(false);
       loadUsers(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -537,6 +669,9 @@ export function DeviceDetailPage() {
 
         {tab === 'users' && (
           <div>
+            <p className="notice">
+              Minimal ro'yxat: {usersOffset}/{usersTotal || users.length} yuklandi. Detail ma'lumot row bosilganda olinadi.
+            </p>
             {usersLoading && <p className="notice">Userlar yuklanmoqda...</p>}
             {!usersLoading && users.length === 0 && <p className="notice">User topilmadi</p>}
             {!usersLoading && users.length > 0 && (
@@ -548,13 +683,16 @@ export function DeviceDetailPage() {
                       <div className="device-item-meta">
                         <span className="badge">EmployeeNo: {user.employeeNo}</span>
                         <span className="badge">Gender: {user.gender || '-'}</span>
+                        <span className={`badge ${(user.numOfFace || 0) > 0 ? 'badge-success' : 'badge-warning'}`}>
+                          {(user.numOfFace || 0) > 0 ? 'Rasm bor' : 'Rasm yo\'q'}
+                        </span>
                       </div>
                     </div>
                     <div className="device-item-actions">
                       <button
                         className="btn-icon"
                         title="Detail"
-                        onClick={() => setSelectedUser(user)}
+                        onClick={() => handleSelectUser(user)}
                       >
                         <Icons.Eye />
                       </button>
@@ -596,7 +734,11 @@ export function DeviceDetailPage() {
                   <button
                     type="button"
                     className="btn-icon"
-                    onClick={() => setSelectedUser(null)}
+                    onClick={() => {
+                      setSelectedUser(null);
+                      setSelectedStudentDetail(null);
+                      setIsEditingUser(false);
+                    }}
                   >
                     <Icons.X />
                   </button>
@@ -605,7 +747,86 @@ export function DeviceDetailPage() {
                 <p><strong>EmployeeNo:</strong> {selectedUser.employeeNo}</p>
                 <p><strong>Gender:</strong> {selectedUser.gender || '-'}</p>
                 <p><strong>Face count:</strong> {selectedUser.numOfFace ?? '-'}</p>
-                <p><strong>Face URL:</strong> {selectedUser.faceURL || '-'}</p>
+                {detailLoading && <p className="notice">DB detail yuklanmoqda...</p>}
+                {!detailLoading && !selectedStudentDetail && (
+                  <p className="notice notice-warning">DB da mos o'quvchi topilmadi (device-only user).</p>
+                )}
+                {!detailLoading && selectedStudentDetail && (
+                  <>
+                    <p><strong>DB Student ID:</strong> {selectedStudentDetail.id}</p>
+                    <p><strong>Sinf:</strong> {selectedStudentDetail.class?.name || '-'}</p>
+                    <p><strong>Telefon:</strong> {selectedStudentDetail.parentPhone || '-'}</p>
+                    {selectedStudentDetail.photoUrl && !editFacePreview && (
+                      <img src={buildPhotoUrl(selectedStudentDetail.photoUrl)} alt="student" className="student-avatar" />
+                    )}
+                    {editFacePreview && (
+                      <img src={editFacePreview} alt="student preview" className="student-avatar" />
+                    )}
+                    <div className="form-actions">
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        onClick={() => setIsEditingUser((prev) => !prev)}
+                      >
+                        <Icons.Edit /> {isEditingUser ? 'Editni yopish' : 'DB + Device Edit'}
+                      </button>
+                    </div>
+                  </>
+                )}
+                {isEditingUser && selectedStudentDetail && (
+                  <div style={{ marginTop: 12 }}>
+                    <div className="form-group">
+                      <label>Familiya</label>
+                      <input className="input" value={editLastName} onChange={(e) => setEditLastName(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label>Ism</label>
+                      <input className="input" value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label>Otasining ismi</label>
+                      <input className="input" value={editFatherName} onChange={(e) => setEditFatherName(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label>Telefon</label>
+                      <input className="input" value={editParentPhone} onChange={(e) => setEditParentPhone(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label>Class ID</label>
+                      <input className="input" value={editClassId} onChange={(e) => setEditClassId(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label>Jins</label>
+                      <select
+                        className="input"
+                        value={editGender}
+                        onChange={(e) => setEditGender(e.target.value as 'MALE' | 'FEMALE')}
+                      >
+                        <option value="MALE">MALE</option>
+                        <option value="FEMALE">FEMALE</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Yangi rasm (ixtiyoriy)</label>
+                      <input
+                        className="input"
+                        type="file"
+                        accept="image/png,image/jpeg"
+                        onChange={(e) => handleFaceFileChange(e.target.files?.[0])}
+                      />
+                    </div>
+                    <div className="form-actions">
+                      <button
+                        type="button"
+                        className="button button-primary"
+                        onClick={handleSaveUserEdit}
+                        disabled={busyAction === `save-edit-${selectedUser.employeeNo}`}
+                      >
+                        <Icons.Save /> Saqlash (DB + Device)
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
