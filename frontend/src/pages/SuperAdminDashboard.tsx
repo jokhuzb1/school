@@ -151,7 +151,7 @@ const SuperAdminDashboard: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [selectedPeriod, customDateRange, attendanceScope]);
+  }, [selectedPeriod, customDateRange, attendanceScope, setLastUpdated]);
 
   // SSE event handler - local state update + debounced API call (faqat bugun uchun)
   const handleAttendanceEvent = useCallback((event: any) => {

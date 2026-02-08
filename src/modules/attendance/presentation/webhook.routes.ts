@@ -9,6 +9,7 @@ import { getDateOnlyInZone, getTimePartsInZone } from "../../../utils/date";
 import { logAudit } from "../../../utils/audit";
 import {
   IS_PROD,
+  DEVICE_AUTO_REGISTER_ENABLED,
   MIN_SCAN_INTERVAL_SECONDS,
   WEBHOOK_ENFORCE_SECRET,
   WEBHOOK_SECRET_HEADER,
@@ -76,6 +77,7 @@ const handleAttendanceEvent = async (
   const { employeeNoString, deviceID, dateTime, rawPayload } = normalized;
   const eventTime = new Date(dateTime);
   const eventType = direction === "in" ? "IN" : "OUT";
+  const deviceType = direction === "in" ? "ENTRANCE" : "EXIT";
   const schoolTimeZone = school?.timezone || "Asia/Tashkent";
   const dateOnly = getDateOnlyInZone(new Date(dateTime), schoolTimeZone);
   const todayDate = getDateOnlyInZone(new Date(), schoolTimeZone);
@@ -86,7 +88,7 @@ const handleAttendanceEvent = async (
     .digest("hex");
 
   // ✅ OPTIMIZATION 1: Parallel queries - device va student ni bir vaqtda olish
-  const [device, studentWithClass] = await Promise.all([
+  const [deviceFound, studentWithClass] = await Promise.all([
     prisma.device.findFirst({
       where: { deviceId: deviceID, schoolId: school.id },
       select: { id: true }, // Faqat kerakli field
@@ -96,6 +98,65 @@ const handleAttendanceEvent = async (
       include: { class: true }, // Class ni ham bir queryda olish
     }),
   ]);
+
+  let device = deviceFound;
+  if (!device && DEVICE_AUTO_REGISTER_ENABLED) {
+    try {
+      // If this deviceId already exists for another school, don't attach it here.
+      const existingByDeviceId = await prisma.device.findUnique({
+        where: { deviceId: deviceID },
+        select: { id: true, schoolId: true },
+      });
+
+      if (!existingByDeviceId) {
+        const created = await prisma.device.create({
+          data: {
+            schoolId: school.id,
+            deviceId: deviceID,
+            name: `Auto ${deviceID}`,
+            type: deviceType as any,
+            location: "Auto-discovered",
+            isActive: true,
+            lastSeenAt: eventTime,
+          },
+          select: { id: true },
+        });
+        device = created;
+        if (opts?.fastify) {
+          logAudit(opts.fastify, {
+            action: "device.auto_registered",
+            level: "info",
+            message: "Device auto-registered from webhook event",
+            schoolId: school?.id,
+            requestId: opts.request?.id,
+            extra: { deviceId: deviceID, deviceType },
+          });
+        }
+      } else if (existingByDeviceId.schoolId !== school.id) {
+        if (opts?.fastify) {
+          logAudit(opts.fastify, {
+            action: "device.auto_register_conflict",
+            level: "warn",
+            message: "DeviceId already belongs to a different school",
+            schoolId: school?.id,
+            requestId: opts.request?.id,
+            extra: { deviceId: deviceID, existingSchoolId: existingByDeviceId.schoolId },
+          });
+        }
+      }
+    } catch (err) {
+      if (opts?.fastify) {
+        logAudit(opts.fastify, {
+          action: "device.auto_register_failed",
+          level: "warn",
+          message: "Device auto-register failed",
+          schoolId: school?.id,
+          requestId: opts.request?.id,
+          extra: { deviceId: deviceID, error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    }
+  }
 
   const student = studentWithClass;
   const cls = studentWithClass?.class;

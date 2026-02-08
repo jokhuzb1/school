@@ -11,6 +11,8 @@ import {
     LoginOutlined,
     LogoutOutlined,
     EnvironmentOutlined,
+    EyeOutlined,
+    EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import { useSchool } from '../hooks/useSchool';
 import { devicesService } from '../services/devices';
@@ -26,7 +28,17 @@ const Devices: React.FC = () => {
     const { message } = App.useApp();
     const { setRefresh, setLastUpdated } = useHeaderMeta();
     const [devices, setDevices] = useState<Device[]>([]);
-    const [webhookInfo, setWebhookInfo] = useState<{ inUrl: string; outUrl: string } | null>(null);
+    const [webhookInfo, setWebhookInfo] = useState<{
+        enforceSecret: boolean;
+        secretHeaderName: string;
+        inUrl: string;
+        outUrl: string;
+        inUrlWithSecret: string;
+        outUrlWithSecret: string;
+        inSecret: string;
+        outSecret: string;
+    } | null>(null);
+    const [showWebhookAdvanced, setShowWebhookAdvanced] = useState(false);
     const [loading, setLoading] = useState(true);
     const [modalOpen, setModalOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -101,6 +113,57 @@ const Devices: React.FC = () => {
         } catch {
             return value;
         }
+    };
+
+    const maskValue = (value: string, kind: 'url' | 'secret' | 'header') => {
+        if (!value) return '';
+        if (kind === 'url') {
+            // Keep path visible but mask secret query param if present
+            const formatted = formatWebhookPath(value);
+            return formatted.replace(/secret=[^&]+/i, 'secret=***');
+        }
+        // secrets/headers: fully masked (token-like)
+        return '••••••••••••••••';
+    };
+
+    const CopyField: React.FC<{
+        label: string;
+        value: string;
+        kind: 'url' | 'secret' | 'header';
+        ariaCopyLabel: string;
+    }> = ({ label, value, kind, ariaCopyLabel }) => {
+        const [visible, setVisible] = useState(false);
+
+        const displayValue = visible
+            ? (kind === 'url' ? formatWebhookPath(value) : value)
+            : maskValue(value, kind);
+
+        return (
+            <div>
+                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                    {label}
+                </Text>
+                <Input.Group compact>
+                    <Input value={displayValue} readOnly style={{ width: 'calc(100% - 64px)' }} size="small" />
+                    <Tooltip title={visible ? "Yashirish" : "Ko'rsatish"}>
+                        <Button
+                            icon={visible ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                            size="small"
+                            aria-label={`${label} ${visible ? "yashirish" : "ko'rsatish"}`}
+                            onClick={() => setVisible((v) => !v)}
+                        />
+                    </Tooltip>
+                    <Tooltip title="Nusxalash">
+                        <Button
+                            icon={<CopyOutlined />}
+                            size="small"
+                            aria-label={ariaCopyLabel}
+                            onClick={() => copyToClipboard(kind === 'url' ? formatWebhookPath(value) : value)}
+                        />
+                    </Tooltip>
+                </Input.Group>
+            </div>
+        );
     };
 
     const handleAdd = () => {
@@ -287,40 +350,58 @@ const Devices: React.FC = () => {
                         >
                             {webhookInfo ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                    <div>
-                                        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                                            <LoginOutlined style={{ color: '#52c41a' }} /> Kirish webhooki:
-                                        </Text>
-                                        <Input.Group compact>
-                                            <Input value={formatWebhookPath(webhookInfo.inUrl)} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
-                                            <Tooltip title="Nusxalash">
+                                    <CopyField
+                                        label="Kirish webhooki (Hikvision URL)"
+                                        value={webhookInfo.inUrlWithSecret}
+                                        kind="url"
+                                        ariaCopyLabel="Kirish webhook manzilini nusxalash"
+                                    />
+                                    <CopyField
+                                        label="Chiqish webhooki (Hikvision URL)"
+                                        value={webhookInfo.outUrlWithSecret}
+                                        kind="url"
+                                        ariaCopyLabel="Chiqish webhook manzilini nusxalash"
+                                    />
+
+                                    <div style={{ marginTop: 4 }}>
+                                        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
+                                            <Space size={8}>
+                                                <span>Advanced (header orqali yuborish):</span>
                                                 <Button
-                                                    icon={<CopyOutlined />}
                                                     size="small"
-                                                    aria-label="Kirish webhook manzilini nusxalash"
-                                                    onClick={() => copyToClipboard(formatWebhookPath(webhookInfo.inUrl))}
-                                                />
-                                            </Tooltip>
-                                        </Input.Group>
-                                    </div>
-                                    <div>
-                                        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
-                                            <LogoutOutlined style={{ color: '#1890ff' }} /> Chiqish webhooki:
+                                                    type="link"
+                                                    onClick={() => setShowWebhookAdvanced((v) => !v)}
+                                                    style={{ padding: 0, height: 'auto' }}
+                                                >
+                                                    {showWebhookAdvanced ? "Yashirish" : "Ko'rsatish"}
+                                                </Button>
+                                            </Space>
                                         </Text>
-                                        <Input.Group compact>
-                                            <Input value={formatWebhookPath(webhookInfo.outUrl)} readOnly style={{ width: 'calc(100% - 32px)' }} size="small" />
-                                            <Tooltip title="Nusxalash">
-                                                <Button
-                                                    icon={<CopyOutlined />}
-                                                    size="small"
-                                                    aria-label="Chiqish webhook manzilini nusxalash"
-                                                    onClick={() => copyToClipboard(formatWebhookPath(webhookInfo.outUrl))}
-                                                />
-                                            </Tooltip>
-                                        </Input.Group>
+                                        {showWebhookAdvanced && (
+                                        <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                                            <CopyField
+                                                label="Header nomi (key)"
+                                                value={webhookInfo.secretHeaderName}
+                                                kind="header"
+                                                ariaCopyLabel="Webhook header nomini nusxalash"
+                                            />
+                                            <CopyField
+                                                label="Kirish secret (value)"
+                                                value={webhookInfo.inSecret}
+                                                kind="secret"
+                                                ariaCopyLabel="Kirish webhook secretni nusxalash"
+                                            />
+                                            <CopyField
+                                                label="Chiqish secret (value)"
+                                                value={webhookInfo.outSecret}
+                                                kind="secret"
+                                                ariaCopyLabel="Chiqish webhook secretni nusxalash"
+                                            />
+                                        </Space>
+                                        )}
                                     </div>
                                     <Text type="secondary" style={{ fontSize: 10 }}>
-                                        Bu manzillarni Hikvision qurilmangizning HTTP tinglash sozlamalariga kiriting.
+                                        Hikvision odatda custom header yuborolmaydi, shuning uchun URL (secret bilan) ishlatiladi. Server esa header yoki query orqali secretni qabul qiladi.
                                     </Text>
                                 </div>
                             ) : (

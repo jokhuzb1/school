@@ -27,7 +27,16 @@ export const schoolsService = {
         await api.delete(`/schools/${id}`);
     },
 
-    async getWebhookInfo(id: string): Promise<{ inUrl: string; outUrl: string }> {
+    async getWebhookInfo(id: string): Promise<{
+        enforceSecret: boolean;
+        secretHeaderName: string;
+        inUrl: string;
+        outUrl: string;
+        inUrlWithSecret: string;
+        outUrlWithSecret: string;
+        inSecret: string;
+        outSecret: string;
+    }> {
         const response = await api.get(`/schools/${id}/webhook-info`);
         return response.data;
     },

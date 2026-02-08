@@ -47,7 +47,7 @@ const config: SeedConfig = {
   absentRate: Number(process.env.SEED_ABSENT_RATE || 0.1),
   excusedRate: Number(process.env.SEED_EXCUSED_RATE || 0.05),
   withEvents: getEnvBoolean("SEED_WITH_EVENTS", false),
-  wipe: getEnvBoolean("SEED_WIPE", true),
+  wipe: getEnvBoolean("SEED_WIPE", false),
   includeBaseSeed: getEnvBoolean("SEED_INCLUDE_BASE", true),
   batchSize: getEnvNumber("SEED_BATCH_SIZE", 1000),
 };
@@ -102,6 +102,42 @@ async function flushCreateMany<T>(
   data.length = 0;
 }
 
+async function ensureClass(params: {
+  schoolId: string;
+  name: string;
+  gradeLevel: number;
+  startTime: string;
+  endTime: string;
+}) {
+  const existing = await prisma.class.findFirst({
+    where: {
+      schoolId: params.schoolId,
+      name: params.name,
+    },
+  });
+
+  if (existing) {
+    return prisma.class.update({
+      where: { id: existing.id },
+      data: {
+        gradeLevel: params.gradeLevel,
+        startTime: params.startTime,
+        endTime: params.endTime,
+      },
+    });
+  }
+
+  return prisma.class.create({
+    data: {
+      schoolId: params.schoolId,
+      name: params.name,
+      gradeLevel: params.gradeLevel,
+      startTime: params.startTime,
+      endTime: params.endTime,
+    },
+  });
+}
+
 async function main() {
   console.log("Seed config:", config);
 
@@ -110,17 +146,30 @@ async function main() {
     await prisma.attendanceEvent.deleteMany();
     await prisma.dailyAttendance.deleteMany();
     await prisma.holiday.deleteMany();
+    await prisma.provisioningLog.deleteMany();
+    await prisma.studentDeviceLink.deleteMany();
+    await prisma.studentProvisioning.deleteMany();
     await prisma.student.deleteMany();
     await prisma.device.deleteMany();
     await prisma.teacherClass.deleteMany();
     await prisma.class.deleteMany();
+    await prisma.camera.deleteMany();
+    await prisma.cameraArea.deleteMany();
+    await prisma.nvr.deleteMany();
     await prisma.user.deleteMany();
     await prisma.school.deleteMany();
   }
 
   const hashed = await bcrypt.hash("admin123", 10);
-  await prisma.user.create({
-    data: {
+  await prisma.user.upsert({
+    where: { email: "admin@system.com" },
+    update: {
+      password: hashed,
+      name: "Super Admin",
+      role: "SUPER_ADMIN",
+      schoolId: null,
+    },
+    create: {
       email: "admin@system.com",
       password: hashed,
       name: "Super Admin",
@@ -141,20 +190,43 @@ const buildEventKey = (parts: string[]) =>
   if (config.includeBaseSeed) {
     console.log("Creating base seed data...");
 
-    const baseSchool = await prisma.school.create({
-      data: {
-        name: "School #1",
-        address: "123 Main St",
-        phone: "123456789",
-        email: "school1@example.com",
-        lateThresholdMinutes: config.lateThresholdMinutes,
-        absenceCutoffMinutes: 180,
-        timezone: "Asia/Tashkent",
-      },
+    const existingBaseSchool = await prisma.school.findFirst({
+      where: { email: "school1@example.com" },
     });
+    const baseSchool = existingBaseSchool
+      ? await prisma.school.update({
+          where: { id: existingBaseSchool.id },
+          data: {
+            name: "School #1",
+            address: "123 Main St",
+            phone: "123456789",
+            email: "school1@example.com",
+            lateThresholdMinutes: config.lateThresholdMinutes,
+            absenceCutoffMinutes: 180,
+            timezone: "Asia/Tashkent",
+          },
+        })
+      : await prisma.school.create({
+          data: {
+            name: "School #1",
+            address: "123 Main St",
+            phone: "123456789",
+            email: "school1@example.com",
+            lateThresholdMinutes: config.lateThresholdMinutes,
+            absenceCutoffMinutes: 180,
+            timezone: "Asia/Tashkent",
+          },
+        });
 
-    await prisma.user.create({
-      data: {
+    await prisma.user.upsert({
+      where: { email: "school1@admin.com" },
+      update: {
+        password: hashed,
+        name: "1-Maktab Admin",
+        role: "SCHOOL_ADMIN",
+        schoolId: baseSchool.id,
+      },
+      create: {
         email: "school1@admin.com",
         password: hashed,
         name: "1-Maktab Admin",
@@ -163,28 +235,30 @@ const buildEventKey = (parts: string[]) =>
       },
     });
 
-    const baseClass1 = await prisma.class.create({
-      data: {
-        name: "1A",
-        gradeLevel: 1,
-        schoolId: baseSchool.id,
-        startTime: "18:00",
-        endTime: "23:00",
-      },
+    const baseClass1 = await ensureClass({
+      schoolId: baseSchool.id,
+      name: "1A",
+      gradeLevel: 1,
+      startTime: "18:00",
+      endTime: "23:00",
     });
 
-    const baseClass2 = await prisma.class.create({
-      data: {
-        name: "8C",
-        gradeLevel: 8,
-        schoolId: baseSchool.id,
-        startTime: "17:00",
-        endTime: "22:00",
-      },
+    const baseClass2 = await ensureClass({
+      schoolId: baseSchool.id,
+      name: "8C",
+      gradeLevel: 8,
+      startTime: "17:00",
+      endTime: "22:00",
     });
 
-    await prisma.device.create({
-      data: {
+    await prisma.device.upsert({
+      where: { deviceId: "1maktab" },
+      update: {
+        name: "1-Maktab Asosiy Kirish",
+        schoolId: baseSchool.id,
+        type: "ENTRANCE",
+      },
+      create: {
         deviceId: "1maktab",
         name: "1-Maktab Asosiy Kirish",
         schoolId: baseSchool.id,
@@ -195,42 +269,49 @@ const buildEventKey = (parts: string[]) =>
     const baseStudents = [
       {
         name: "Jaxongir Mirzaakhmedov",
+        gender: "MALE" as const,
         deviceStudentId: "1",
         schoolId: baseSchool.id,
         classId: baseClass1.id,
       },
       {
         name: "Mukhammad Mirzaakhmedov",
+        gender: "MALE" as const,
         deviceStudentId: "2",
         schoolId: baseSchool.id,
         classId: baseClass1.id,
       },
       {
         name: "Axmadxon Dexqonboyev",
+        gender: "MALE" as const,
         deviceStudentId: "484655",
         schoolId: baseSchool.id,
         classId: baseClass2.id,
       },
       {
         name: "G'olibjon",
+        gender: "MALE" as const,
         deviceStudentId: "2302209",
         schoolId: baseSchool.id,
         classId: baseClass2.id,
       },
       {
         name: "Abduvahob Abdurazzoqov",
+        gender: "MALE" as const,
         deviceStudentId: "6",
         schoolId: baseSchool.id,
         classId: baseClass1.id,
       },
       {
         name: "Saidorifxo'ja Yo'ldoshxo'jayev",
+        gender: "MALE" as const,
         deviceStudentId: "456585",
         schoolId: baseSchool.id,
         classId: baseClass2.id,
       },
       {
         name: "Ibroxim Sadriddinov",
+        gender: "MALE" as const,
         deviceStudentId: "9",
         schoolId: baseSchool.id,
         classId: baseClass1.id,
@@ -238,7 +319,20 @@ const buildEventKey = (parts: string[]) =>
     ];
 
     for (const s of baseStudents) {
-      await prisma.student.create({ data: s });
+      await prisma.student.upsert({
+        where: {
+          schoolId_deviceStudentId: {
+            schoolId: s.schoolId,
+            deviceStudentId: s.deviceStudentId,
+          },
+        },
+        update: {
+          name: s.name,
+          classId: s.classId,
+          isActive: true,
+        },
+        create: s,
+      });
     }
 
     console.log("Base seed data created.");
@@ -251,20 +345,44 @@ const buildEventKey = (parts: string[]) =>
       `Creating school ${schoolNumber}/${config.schools + schoolIndexOffset}...`,
     );
 
-    const school = await prisma.school.create({
-      data: {
-        name: `School #${schoolNumber}`,
-        address: `${schoolNumber} Main St`,
-        phone: `100000${schoolNumber}`,
-        email: `school${schoolNumber}@example.com`,
-        lateThresholdMinutes: config.lateThresholdMinutes,
-        absenceCutoffMinutes: 180,
-        timezone: "Asia/Tashkent",
-      },
+    const schoolEmail = `school${schoolNumber}@example.com`;
+    const existingSchool = await prisma.school.findFirst({
+      where: { email: schoolEmail },
     });
+    const school = existingSchool
+      ? await prisma.school.update({
+          where: { id: existingSchool.id },
+          data: {
+            name: `School #${schoolNumber}`,
+            address: `${schoolNumber} Main St`,
+            phone: `100000${schoolNumber}`,
+            email: schoolEmail,
+            lateThresholdMinutes: config.lateThresholdMinutes,
+            absenceCutoffMinutes: 180,
+            timezone: "Asia/Tashkent",
+          },
+        })
+      : await prisma.school.create({
+          data: {
+            name: `School #${schoolNumber}`,
+            address: `${schoolNumber} Main St`,
+            phone: `100000${schoolNumber}`,
+            email: schoolEmail,
+            lateThresholdMinutes: config.lateThresholdMinutes,
+            absenceCutoffMinutes: 180,
+            timezone: "Asia/Tashkent",
+          },
+        });
 
-    await prisma.user.create({
-      data: {
+    await prisma.user.upsert({
+      where: { email: `school${schoolNumber}@admin.com` },
+      update: {
+        password: hashed,
+        name: `School ${schoolNumber} Admin`,
+        role: "SCHOOL_ADMIN",
+        schoolId: school.id,
+      },
+      create: {
         email: `school${schoolNumber}@admin.com`,
         password: hashed,
         name: `School ${schoolNumber} Admin`,
@@ -273,8 +391,14 @@ const buildEventKey = (parts: string[]) =>
       },
     });
 
-    const device = await prisma.device.create({
-      data: {
+    const device = await prisma.device.upsert({
+      where: { deviceId: `school-${schoolNumber}-entrance` },
+      update: {
+        name: `School ${schoolNumber} Entrance`,
+        schoolId: school.id,
+        type: "ENTRANCE",
+      },
+      create: {
         deviceId: `school-${schoolNumber}-entrance`,
         name: `School ${schoolNumber} Entrance`,
         schoolId: school.id,
@@ -292,14 +416,12 @@ const buildEventKey = (parts: string[]) =>
       const gradeLevel = (i % 12) + 1;
       const section = String.fromCharCode(65 + (i % 6));
       const startTime = START_TIMES[i % START_TIMES.length];
-      const cls = await prisma.class.create({
-        data: {
-          name: `${gradeLevel}${section}`,
-          gradeLevel,
-          schoolId: school.id,
-          startTime,
-          endTime: "15:00",
-        },
+      const cls = await ensureClass({
+        schoolId: school.id,
+        name: `${gradeLevel}${section}`,
+        gradeLevel,
+        startTime,
+        endTime: "15:00",
       });
       classRecords.push({
         id: cls.id,
@@ -317,6 +439,7 @@ const buildEventKey = (parts: string[]) =>
 
     const studentBatch: Array<{
       name: string;
+      gender: "MALE" | "FEMALE";
       deviceStudentId: string;
       schoolId: string;
       classId: string;
@@ -328,6 +451,7 @@ const buildEventKey = (parts: string[]) =>
       for (let i = 0; i < config.studentsPerClass; i++) {
         studentBatch.push({
           name: `Student ${schoolIndex}-${cls.name}-${studentCounter}`,
+          gender: Math.random() > 0.5 ? "MALE" : "FEMALE",
           deviceStudentId: `S${schoolIndex}C${cls.name}N${studentCounter}`,
           schoolId: school.id,
           classId: cls.id,
@@ -336,13 +460,19 @@ const buildEventKey = (parts: string[]) =>
         studentCounter++;
 
         if (studentBatch.length >= config.batchSize) {
-          await prisma.student.createMany({ data: studentBatch });
+          await prisma.student.createMany({
+            data: studentBatch,
+            skipDuplicates: true,
+          });
           studentBatch.length = 0;
         }
       }
     }
     await flushCreateMany(studentBatch, (payload) =>
-      prisma.student.createMany(payload),
+      prisma.student.createMany({
+        ...payload,
+        skipDuplicates: true,
+      }),
     );
 
     const students = await prisma.student.findMany({
@@ -437,21 +567,33 @@ const buildEventKey = (parts: string[]) =>
         }
 
         if (attendanceBatch.length >= config.batchSize) {
-          await prisma.dailyAttendance.createMany({ data: attendanceBatch });
+          await prisma.dailyAttendance.createMany({
+            data: attendanceBatch,
+            skipDuplicates: true,
+          });
           attendanceBatch.length = 0;
         }
         if (eventBatch.length >= config.batchSize) {
-          await prisma.attendanceEvent.createMany({ data: eventBatch });
+          await prisma.attendanceEvent.createMany({
+            data: eventBatch,
+            skipDuplicates: true,
+          });
           eventBatch.length = 0;
         }
       }
     }
 
     await flushCreateMany(attendanceBatch, (payload) =>
-      prisma.dailyAttendance.createMany(payload),
+      prisma.dailyAttendance.createMany({
+        ...payload,
+        skipDuplicates: true,
+      }),
     );
     await flushCreateMany(eventBatch, (payload) =>
-      prisma.attendanceEvent.createMany(payload),
+      prisma.attendanceEvent.createMany({
+        ...payload,
+        skipDuplicates: true,
+      }),
     );
 
     console.log(

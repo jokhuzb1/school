@@ -10,6 +10,12 @@ export const MEDIAMTX_WEBRTC_URL =
   import.meta.env.VITE_MEDIAMTX_WEBRTC_URL ||
   `http://${window.location.hostname}:8889`;
 
+// Debug log for production-like network environment
+if (import.meta.env.DEV) {
+  console.log("📍 API_BASE_URL:", API_BASE_URL);
+  console.log("📍 MEDIAMTX_HLS_URL:", MEDIAMTX_HLS_URL);
+}
+
 // Helper function to build HLS URL
 export const buildHlsUrl = (path: string): string => {
   return `${MEDIAMTX_HLS_URL}/${path}/index.m3u8`;

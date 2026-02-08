@@ -457,7 +457,7 @@ const StudentDetail: React.FC = () => {
           {/* Qo'shimcha info */}
           <Col flex="none" style={{ paddingRight: 8 }}>
             <Tooltip
-              title={`ID: ${student.deviceStudentId || "-"} | Ota-onasi: ${student.parentName || "-"} (${student.parentPhone || "-"})`}
+              title={`ID: ${student.deviceStudentId || "-"} | Otasining ismi: ${student.fatherName || "-"} (${student.parentPhone || "-"})`}
             >
               <Button
                 type="default"

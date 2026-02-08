@@ -9,10 +9,9 @@ import {
 } from "../../../utils/authz";
 import { sendHttpError } from "../../../utils/httpErrors";
 import { decryptSecret, encryptSecret } from "../../../utils/crypto";
-import { checkNvrHealth, sanitizeNvr } from "../services/nvr.service";
+import { checkNvrHealth, probeTcp, sanitizeNvr } from "../services/nvr.service";
 import {
   buildRtspUrl,
-  buildHikvisionRtspUrl,
   RtspVendor,
 } from "../services/rtsp.service";
 import {
@@ -20,7 +19,13 @@ import {
   fetchOnvifProfiles,
 } from "../services/onvif.service";
 import {
+  buildMediaMtxConfig,
+  getWebrtcPath,
+} from "../services/mediamtx-config.service";
+import { maskRtspUrl, parseRtspUrl } from "../services/rtsp-url.util";
+import {
   MEDIAMTX_DEPLOY_ENABLED,
+  MEDIAMTX_DEPLOY_ALLOW_RESTART_COMMANDS,
   ONVIF_CONCURRENCY,
   ONVIF_TIMEOUT_MS,
   WEBRTC_BASE_URL,
@@ -37,28 +42,11 @@ function badRequest(message: string) {
   return Object.assign(new Error(message), { statusCode: 400 });
 }
 
-function sanitizePathSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
-
 function buildWebrtcUrl(path: string): string | null {
   if (!WEBRTC_BASE_URL) return null;
   const trimmed = WEBRTC_BASE_URL.replace(/\/+$/, "");
   // MediaMTX WHEP endpoint format: /{path}/whep
   return `${trimmed}/${path}/whep`;
-}
-
-function getWebrtcPath(params: {
-  schoolId: string;
-  cameraId: string;
-  externalId?: string | null;
-}) {
-  const { schoolId, cameraId, externalId } = params;
-  const safeExternal = externalId?.trim();
-  if (safeExternal) {
-    return `schools/${schoolId}/cameras/${sanitizePathSegment(safeExternal)}`;
-  }
-  return `schools/${schoolId}/cameras/${cameraId}`;
 }
 
 const runCommand = (
@@ -92,81 +80,6 @@ type NvrAuth = {
   username: string;
   password: string;
   vendor: string | null;
-};
-
-const buildMediaMtxConfig = (params: {
-  cameras: Array<{
-    id: string;
-    schoolId: string;
-    externalId: string | null;
-    streamUrl: string | null;
-    streamProfile: string;
-    autoGenerateUrl: boolean;
-    channelNo: number | null;
-    nvrId: string | null;
-  }>;
-  nvrAuthById: Map<string, NvrAuth>;
-}) => {
-  const { cameras, nvrAuthById } = params;
-  const lines: string[] = [
-    "# Auto-generated MediaMTX config",
-    "logLevel: info",
-    "hlsAllowOrigin: '*'",
-    "webrtcAllowOrigin: '*'",
-    "hlsAlwaysRemux: yes",
-    "",
-    "paths:",
-  ];
-  const usedPaths = new Set<string>();
-
-  cameras.forEach((camera) => {
-    const pathKey = getWebrtcPath({
-      schoolId: camera.schoolId,
-      cameraId: camera.id,
-      externalId: camera.externalId,
-    });
-    if (usedPaths.has(pathKey)) return;
-
-    let rtspUrl = camera.streamUrl || null;
-
-    // Auto-generate URL from NVR if enabled and no manual URL
-    if (
-      camera.autoGenerateUrl &&
-      !rtspUrl &&
-      camera.nvrId &&
-      camera.channelNo
-    ) {
-      const nvr = nvrAuthById.get(camera.nvrId);
-      if (nvr) {
-        // Detect vendor from NVR settings
-        const vendor = (nvr.vendor?.toLowerCase() || "hikvision") as RtspVendor;
-        rtspUrl = buildRtspUrl({
-          nvr: {
-            host: nvr.host,
-            rtspPort: nvr.rtspPort,
-            username: nvr.username,
-            password: nvr.password,
-          },
-          channelNo: camera.channelNo,
-          profile: (camera.streamProfile as "main" | "sub") || "main",
-          vendor,
-        });
-      }
-    }
-
-    if (!rtspUrl) return;
-
-    usedPaths.add(pathKey);
-    const profileLabel = camera.streamProfile === "sub" ? "H.264" : "H.265";
-    lines.push(`  # ${camera.id} (${profileLabel})`);
-    lines.push(`  ${pathKey}:`);
-    lines.push(`    source: ${rtspUrl}`);
-    lines.push(`    rtspTransport: tcp`);
-    lines.push(`    sourceOnDemand: yes`);
-    lines.push(`    sourceOnDemandCloseAfter: 10s`);
-  });
-
-  return lines.join("\n");
 };
 
 const deployMediaMtxConfig = async (params: {
@@ -289,6 +202,76 @@ function isSafeLocalPath(value: string): boolean {
   if (!path.isAbsolute(value)) return false;
   if (value.includes("..")) return false;
   return true;
+}
+
+function isMaskedRtspUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol.toLowerCase() === "rtsp:" && url.password === "***";
+  } catch {
+    return value.includes(":***@");
+  }
+}
+
+function isSafeRestartCommand(value: string): boolean {
+  const cmd = value.trim();
+  if (!cmd) return false;
+  // Block common shell metacharacters to reduce injection risk.
+  const blocked = ["&", "|", ";", ">", "<", "`", "\n", "\r"];
+  return !blocked.some((ch) => cmd.includes(ch));
+}
+
+function buildRtspUrlForCamera(params: {
+  camera: {
+    streamUrl: string | null;
+    streamProfile: string;
+    autoGenerateUrl: boolean;
+    nvrId: string | null;
+    channelNo: number | null;
+  };
+  nvr: {
+    host: string;
+    rtspPort: number;
+    username: string;
+    passwordEncrypted: string;
+    vendor: string | null;
+  } | null;
+}) {
+  const { camera, nvr } = params;
+
+  if (camera.streamUrl) {
+    return { rtspUrl: camera.streamUrl, rtspSource: "manual" };
+  }
+
+  if (
+    camera.autoGenerateUrl &&
+    camera.nvrId &&
+    camera.channelNo &&
+    nvr &&
+    nvr.host &&
+    nvr.rtspPort &&
+    nvr.username
+  ) {
+    const password = decryptSecret(nvr.passwordEncrypted);
+    const vendor = (nvr.vendor?.toLowerCase() || "hikvision") as RtspVendor;
+    const profile = (camera.streamProfile as "main" | "sub") || "main";
+    return {
+      rtspUrl: buildRtspUrl({
+        nvr: {
+          host: nvr.host,
+          rtspPort: nvr.rtspPort,
+          username: nvr.username,
+          password,
+        },
+        channelNo: camera.channelNo,
+        profile,
+        vendor,
+      }),
+      rtspSource: `auto:${vendor}`,
+    };
+  }
+
+  return { rtspUrl: null, rtspSource: null };
 }
 
 export default async function (fastify: FastifyInstance) {
@@ -965,7 +948,12 @@ export default async function (fastify: FastifyInstance) {
           },
           orderBy: { createdAt: "desc" },
         });
-        if (canViewRtsp) return cameras;
+        if (canViewRtsp) {
+          return cameras.map((camera) => ({
+            ...camera,
+            streamUrl: camera.streamUrl ? maskRtspUrl(camera.streamUrl) : null,
+          }));
+        }
         return cameras.map((camera) => ({ ...camera, streamUrl: null }));
       } catch (err) {
         return sendHttpError(reply, err);
@@ -980,36 +968,24 @@ export default async function (fastify: FastifyInstance) {
       try {
         const { id } = request.params;
         const user = request.user;
+        const { includeRtspPassword } = request.query as any;
 
         requireRoles(user, ["SCHOOL_ADMIN", "GUARD", "SUPER_ADMIN"]);
         const camera = await requireCameraSchoolScope(user, id);
 
         const canViewRtsp =
           user?.role === "SCHOOL_ADMIN" || user?.role === "SUPER_ADMIN";
-        let rtspUrl: string | null = null;
+        const canViewRtspPassword = user?.role === "SUPER_ADMIN";
+        let rtspUrlRaw: string | null = null;
         let rtspSource: string | null = null;
 
         if (canViewRtsp) {
-          rtspUrl = camera.streamUrl || null;
-          rtspSource = camera.streamUrl ? "manual" : "hikvision";
-
-          if (!rtspUrl && camera.nvrId && camera.channelNo) {
-            const nvr = await requireNvrSchoolScope(user, camera.nvrId);
-            const password = decryptSecret(nvr.passwordEncrypted);
-            rtspUrl = buildHikvisionRtspUrl({
-              nvr: {
-                host: nvr.host,
-                rtspPort: nvr.rtspPort,
-                username: nvr.username,
-                password,
-              },
-              channelNo: camera.channelNo,
-            });
-          }
-
-          if (!rtspUrl) {
-            rtspSource = null;
-          }
+          const nvr = camera.nvrId
+            ? await requireNvrSchoolScope(user, camera.nvrId)
+            : null;
+          const built = buildRtspUrlForCamera({ camera, nvr });
+          rtspUrlRaw = built.rtspUrl;
+          rtspSource = built.rtspSource;
         }
 
         const webrtcPath = getWebrtcPath({
@@ -1025,14 +1001,23 @@ export default async function (fastify: FastifyInstance) {
         const isH265 = streamProfile === "main";
         const recommendedPlayer = isH265 ? "hls" : "webrtc";
 
-        // HLS URL for H.265 streams
-        const hlsUrl = `http://localhost:8888/${webrtcPath}/index.m3u8`;
+        // HLS URL for H.265 streams - frontend builds this dynamically
+        const hlsUrl = null;
+
+        const includePassword =
+          includeRtspPassword === "1" ||
+          includeRtspPassword === "true" ||
+          includeRtspPassword === true;
+        const rtspUrl =
+          canViewRtspPassword && includePassword ? rtspUrlRaw : maskRtspUrl(rtspUrlRaw || "");
 
         return {
           cameraId: camera.id,
           webrtcUrl,
           webrtcPath,
-          rtspUrl,
+          rtspUrl: rtspUrlRaw ? rtspUrl : null,
+          rtspUrlRaw:
+            canViewRtspPassword && includePassword ? rtspUrlRaw : null,
           rtspSource,
           hlsUrl,
           streamProfile,
@@ -1187,6 +1172,16 @@ export default async function (fastify: FastifyInstance) {
           if (ssh.port && !isValidPort(ssh.port)) {
             return reply.status(400).send({ error: "invalid ssh port" });
           }
+          if (ssh.restartCommand && !MEDIAMTX_DEPLOY_ALLOW_RESTART_COMMANDS) {
+            return reply
+              .status(400)
+              .send({ error: "ssh restartCommand disabled" });
+          }
+          if (ssh.restartCommand && !isSafeRestartCommand(ssh.restartCommand)) {
+            return reply
+              .status(400)
+              .send({ error: "invalid ssh restartCommand" });
+          }
         }
 
         if (mode === "docker") {
@@ -1201,6 +1196,22 @@ export default async function (fastify: FastifyInstance) {
           }
           if (!isSafeLocalPath(request.body.local.path)) {
             return reply.status(400).send({ error: "invalid local path" });
+          }
+          if (
+            request.body?.local?.restartCommand &&
+            !MEDIAMTX_DEPLOY_ALLOW_RESTART_COMMANDS
+          ) {
+            return reply
+              .status(400)
+              .send({ error: "local restartCommand disabled" });
+          }
+          if (
+            request.body?.local?.restartCommand &&
+            !isSafeRestartCommand(request.body.local.restartCommand)
+          ) {
+            return reply
+              .status(400)
+              .send({ error: "invalid local restartCommand" });
           }
         }
 
@@ -1273,6 +1284,16 @@ export default async function (fastify: FastifyInstance) {
           if (ssh.port && !isValidPort(ssh.port)) {
             return reply.status(400).send({ error: "invalid ssh port" });
           }
+          if (ssh.restartCommand && !MEDIAMTX_DEPLOY_ALLOW_RESTART_COMMANDS) {
+            return reply
+              .status(400)
+              .send({ error: "ssh restartCommand disabled" });
+          }
+          if (ssh.restartCommand && !isSafeRestartCommand(ssh.restartCommand)) {
+            return reply
+              .status(400)
+              .send({ error: "invalid ssh restartCommand" });
+          }
         }
 
         if (mode === "docker") {
@@ -1287,6 +1308,22 @@ export default async function (fastify: FastifyInstance) {
           }
           if (!isSafeLocalPath(request.body.local.path)) {
             return reply.status(400).send({ error: "invalid local path" });
+          }
+          if (
+            request.body?.local?.restartCommand &&
+            !MEDIAMTX_DEPLOY_ALLOW_RESTART_COMMANDS
+          ) {
+            return reply
+              .status(400)
+              .send({ error: "local restartCommand disabled" });
+          }
+          if (
+            request.body?.local?.restartCommand &&
+            !isSafeRestartCommand(request.body.local.restartCommand)
+          ) {
+            return reply
+              .status(400)
+              .send({ error: "invalid local restartCommand" });
           }
         }
 
@@ -1338,6 +1375,11 @@ export default async function (fastify: FastifyInstance) {
         if (streamProfile && !["main", "sub"].includes(streamProfile)) {
           return reply.status(400).send({ error: "invalid streamProfile" });
         }
+        if (typeof streamUrl === "string" && isMaskedRtspUrl(streamUrl)) {
+          return reply
+            .status(400)
+            .send({ error: "streamUrl contains masked password placeholder" });
+        }
 
         if (nvrId) {
           await requireNvrSchoolScope(user, nvrId);
@@ -1346,7 +1388,7 @@ export default async function (fastify: FastifyInstance) {
           await requireCameraAreaSchoolScope(user, areaId);
         }
 
-        return prisma.camera.create({
+        const created = await prisma.camera.create({
           data: {
             schoolId,
             nvrId,
@@ -1355,13 +1397,21 @@ export default async function (fastify: FastifyInstance) {
             externalId,
             channelNo:
               channelNo !== undefined ? toNumber(channelNo) : undefined,
-            streamUrl,
+            streamUrl:
+              streamUrl !== undefined && String(streamUrl).trim().length === 0
+                ? null
+                : streamUrl,
             streamProfile: streamProfile || "main",
             autoGenerateUrl: autoGenerateUrl ?? true,
             status,
             isActive: isActive ?? true,
           },
         });
+
+        return {
+          ...created,
+          streamUrl: created.streamUrl ? maskRtspUrl(created.streamUrl) : null,
+        };
       } catch (err) {
         return sendHttpError(reply, err);
       }
@@ -1389,7 +1439,7 @@ export default async function (fastify: FastifyInstance) {
         } = request.body as any;
 
         requireRoles(user, ["SCHOOL_ADMIN", "SUPER_ADMIN"]);
-        await requireCameraSchoolScope(user, id);
+        const existing = await requireCameraSchoolScope(user, id);
 
         if (status && !ALLOWED_CAMERA_STATUS.has(status)) {
           return reply.status(400).send({ error: "invalid status" });
@@ -1408,7 +1458,17 @@ export default async function (fastify: FastifyInstance) {
           await requireCameraAreaSchoolScope(user, areaId);
         }
 
-        return prisma.camera.update({
+        let streamUrlToSave = streamUrl;
+        if (typeof streamUrlToSave === "string") {
+          if (isMaskedRtspUrl(streamUrlToSave) && existing.streamUrl) {
+            streamUrlToSave = existing.streamUrl;
+          }
+          if (streamUrlToSave.trim().length === 0) {
+            streamUrlToSave = null;
+          }
+        }
+
+        const updated = await prisma.camera.update({
           where: { id },
           data: {
             name,
@@ -1417,13 +1477,18 @@ export default async function (fastify: FastifyInstance) {
             externalId,
             channelNo:
               channelNo !== undefined ? toNumber(channelNo) : undefined,
-            streamUrl,
+            streamUrl: streamUrlToSave,
             streamProfile,
             autoGenerateUrl,
             status,
             isActive,
           },
         });
+
+        return {
+          ...updated,
+          streamUrl: updated.streamUrl ? maskRtspUrl(updated.streamUrl) : null,
+        };
       } catch (err) {
         return sendHttpError(reply, err);
       }
@@ -1460,30 +1525,11 @@ export default async function (fastify: FastifyInstance) {
         requireRoles(user, ["SCHOOL_ADMIN", "SUPER_ADMIN"]);
         const camera = await requireCameraSchoolScope(user, id);
 
-        let rtspUrl = camera.streamUrl;
-
-        // Auto-generate URL if needed
-        if (!rtspUrl && camera.nvrId && camera.channelNo) {
-          const nvr = await prisma.nvr.findUnique({
-            where: { id: camera.nvrId },
-          });
-          if (nvr) {
-            const password = decryptSecret(nvr.passwordEncrypted);
-            const vendor = (nvr.vendor?.toLowerCase() ||
-              "hikvision") as RtspVendor;
-            rtspUrl = buildRtspUrl({
-              nvr: {
-                host: nvr.host,
-                rtspPort: nvr.rtspPort,
-                username: nvr.username,
-                password,
-              },
-              channelNo: camera.channelNo,
-              profile: (camera.streamProfile as "main" | "sub") || "main",
-              vendor,
-            });
-          }
-        }
+        const nvr = camera.nvrId
+          ? await requireNvrSchoolScope(user, camera.nvrId)
+          : null;
+        const built = buildRtspUrlForCamera({ camera, nvr });
+        const rtspUrl = built.rtspUrl;
 
         if (!rtspUrl) {
           return reply.status(400).send({
@@ -1492,31 +1538,33 @@ export default async function (fastify: FastifyInstance) {
           });
         }
 
-        // Parse URL to test TCP connection
-        const urlMatch = rtspUrl.match(/rtsp:\/\/[^@]+@([^:\/]+):(\d+)/);
-        if (!urlMatch) {
+        let host: string;
+        let port: number;
+        try {
+          const parsed = parseRtspUrl(rtspUrl);
+          host = parsed.host;
+          port = parsed.port;
+        } catch (err) {
           return reply.status(400).send({
             success: false,
-            error: "Invalid RTSP URL format",
+            error: err instanceof Error ? err.message : "Invalid RTSP URL",
           });
         }
 
-        const [, host, portStr] = urlMatch;
-        const port = parseInt(portStr, 10);
-
         // TCP probe
-        const { probeTcp } = await import("../services/nvr.service");
-        const isReachable = await probeTcp(host, port, 3000);
+        const probe = await probeTcp(host, port, 3000);
 
         return {
-          success: isReachable,
-          rtspUrl,
+          success: probe.ok,
+          rtspUrl: maskRtspUrl(rtspUrl),
           host,
           port,
           streamProfile: camera.streamProfile || "main",
-          message: isReachable
+          message: probe.ok
             ? "RTSP server javob berdi"
             : "RTSP serverga ulanib bo'lmadi",
+          latencyMs: probe.latencyMs,
+          error: probe.error,
         };
       } catch (err) {
         return sendHttpError(reply, err);
@@ -1533,6 +1581,7 @@ export default async function (fastify: FastifyInstance) {
         const { schoolId } = request.params;
         const user = request.user;
         const { nvrId, channelNo, streamProfile } = request.body as any;
+        const { includeRtspPassword } = request.query as any;
 
         requireRoles(user, ["SCHOOL_ADMIN", "SUPER_ADMIN"]);
         requireSchoolScope(user, schoolId);
@@ -1564,8 +1613,17 @@ export default async function (fastify: FastifyInstance) {
           vendor,
         });
 
+        const includePassword =
+          includeRtspPassword === "1" ||
+          includeRtspPassword === "true" ||
+          includeRtspPassword === true;
+        const rtspUrlOut =
+          user?.role === "SUPER_ADMIN" && includePassword
+            ? rtspUrl
+            : maskRtspUrl(rtspUrl);
+
         return {
-          rtspUrl,
+          rtspUrl: rtspUrlOut,
           vendor,
           profile,
           host: nvr.host,

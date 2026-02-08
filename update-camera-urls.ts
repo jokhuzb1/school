@@ -1,39 +1,46 @@
-import prisma from "./src/prisma";
+﻿import prisma from "./src/prisma";
 
-async function updateCameraStreams() {
-  const schoolId = "4521bf61-2255-4bf0-be33-5d56fd9f6a87";
+async function main() {
+  const schoolId = process.env.SCHOOL_ID || "";
+  const matchHost = process.env.MATCH_HOST || "";
+  const from = process.env.FROM_SEGMENT || "/main/";
+  const to = process.env.TO_SEGMENT || "/sub/";
 
-  console.log("Updating camera stream URLs to SUB stream...\n");
+  if (!schoolId) throw new Error("Missing SCHOOL_ID env var");
+  if (!matchHost) throw new Error("Missing MATCH_HOST env var");
 
-  // Update all cameras to use SUB stream
-  const cameras = await prisma.camera.findMany({
-    where: { schoolId },
-  });
+  console.log(`Updating camera stream URLs for school=${schoolId}`);
+  console.log(`Match host: ${matchHost}`);
+  console.log(`Replace: ${from} -> ${to}\n`);
 
-  for (const cam of cameras) {
-    let newUrl = null;
+  const cameras = await prisma.camera.findMany({ where: { schoolId } });
 
-    if (cam.streamUrl?.includes("192.168.100.58")) {
-      // Replace main with sub
-      newUrl = cam.streamUrl.replace("/main/", "/sub/");
-
-      await prisma.camera.update({
-        where: { id: cam.id },
-        data: { streamUrl: newUrl },
-      });
-
-      console.log(`✅ ${cam.name}: Updated to SUB stream`);
-      console.log(`   Old: ${cam.streamUrl}`);
-      console.log(`   New: ${newUrl}\n`);
-    } else {
-      console.log(`⚠️  ${cam.name}: Skipped (different format)`);
-      console.log(`   URL: ${cam.streamUrl}\n`);
+  for (const camera of cameras) {
+    if (!camera.streamUrl) {
+      console.log(`Skipped: ${camera.name} (no streamUrl)`);
+      continue;
     }
+
+    if (!camera.streamUrl.includes(matchHost)) {
+      console.log(`Skipped: ${camera.name} (different host)`);
+      continue;
+    }
+
+    const newUrl = camera.streamUrl.replace(from, to);
+    if (newUrl === camera.streamUrl) {
+      console.log(`Skipped: ${camera.name} (no change)`);
+      continue;
+    }
+
+    await prisma.camera.update({
+      where: { id: camera.id },
+      data: { streamUrl: newUrl },
+    });
+
+    console.log(`Updated: ${camera.name}`);
   }
 
-  console.log("Done!");
+  console.log("\nDone!");
 }
 
-updateCameraStreams()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+main().catch(console.error).finally(() => prisma.$disconnect());

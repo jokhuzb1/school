@@ -27,6 +27,26 @@ import { CORS_ORIGINS, IS_PROD, JWT_SECRET, PORT } from "./src/config";
 
 const server = Fastify({ logger: true });
 
+server.addHook("onRequest", async (request, reply) => {
+  reply.header("x-request-id", request.id);
+  (request as any)._startedAt = Date.now();
+});
+
+server.addHook("onResponse", async (request, reply) => {
+  const startedAt = (request as any)._startedAt || Date.now();
+  const durationMs = Date.now() - startedAt;
+  request.log.info(
+    {
+      requestId: request.id,
+      method: request.method,
+      url: request.url,
+      statusCode: reply.statusCode,
+      durationMs,
+    },
+    "request.completed",
+  );
+});
+
 server.register(helmet, {
   global: true,
   contentSecurityPolicy: IS_PROD ? undefined : false,
@@ -59,7 +79,8 @@ server.register(require("@fastify/cors"), {
 
 server.register(multipart, {
   addToBody: true,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  // Excel with embedded images can get large; keep this reasonable.
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
 server.register(fastifyJwt, { secret: JWT_SECRET });
 

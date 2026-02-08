@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import path from "path";
 import fs from "fs/promises";
+import { buildLocalMediaMtxConfigFromDb } from "./mediamtx-config.service";
 
 /**
  * MediaMTX serverni avtomatik ishga tushirish uchun xizmat
@@ -9,6 +10,7 @@ export async function startMediaMtxAuto() {
   const mtxDir = path.join(process.cwd(), "tools", "mediamtx");
   const mtxExe = path.join(mtxDir, IS_WINDOWS() ? "mediamtx.exe" : "mediamtx");
   const mtxConfig = path.join(mtxDir, "mediamtx.yml");
+  const mtxConfigAutogen = path.join(mtxDir, "mediamtx.autogen.yml");
 
   try {
     // MediaMTX mavjudligini tekshirish
@@ -16,7 +18,20 @@ export async function startMediaMtxAuto() {
 
     console.log("🚀 MediaMTX serverni ishga tushirishga urinish...");
 
-    const child = spawn(mtxExe, [mtxConfig], {
+    let configToUse = mtxConfig;
+    try {
+      const generated = await buildLocalMediaMtxConfigFromDb();
+      await fs.writeFile(mtxConfigAutogen, generated, "utf8");
+      configToUse = mtxConfigAutogen;
+      console.log(`🧩 MediaMTX config autogen: ${mtxConfigAutogen}`);
+    } catch (err) {
+      console.warn(
+        "⚠️ MediaMTX config autogen bo'lmadi, default config ishlatiladi:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    const child = spawn(mtxExe, [configToUse], {
       cwd: mtxDir,
       detached: true,
       stdio: "ignore",

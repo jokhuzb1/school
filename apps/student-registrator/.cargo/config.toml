@@ -1,0 +1,5 @@
+[build]
+jobs = 1
+
+# Avoid Windows file-lock issues during parallel Rust builds (os error 32).
+# If builds are still flaky, we can also move target dir to a temp folder.

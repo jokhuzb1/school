@@ -89,7 +89,16 @@ export default async function (fastify: FastifyInstance) {
         requireRoles(user, ['SCHOOL_ADMIN']);
         requireSchoolScope(user, schoolId);
 
-        const cls = await prisma.class.create({ data: { name, gradeLevel, schoolId, startTime, endTime } });
+        const resolvedStartTime = startTime || "08:00";
+        const cls = await prisma.class.create({
+          data: {
+            name,
+            gradeLevel,
+            schoolId,
+            startTime: resolvedStartTime,
+            endTime,
+          },
+        });
         return cls;
       } catch (err) {
         return sendHttpError(reply, err);

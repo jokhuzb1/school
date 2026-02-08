@@ -16,6 +16,28 @@ export interface StreamInfo {
   error?: string;
 }
 
+function parseFfprobeFps(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  // Common format: "25/1"
+  const fraction = trimmed.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+  if (fraction) {
+    const num = Number(fraction[1]);
+    const den = Number(fraction[2]);
+    if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) {
+      return undefined;
+    }
+    const fps = num / den;
+    return Number.isFinite(fps) && fps > 0 ? fps : undefined;
+  }
+
+  // Sometimes it's already a number-like string
+  const num = Number(trimmed);
+  return Number.isFinite(num) && num > 0 ? num : undefined;
+}
+
 /**
  * Test RTSP connection using TCP probe
  */
@@ -116,9 +138,7 @@ export async function getStreamInfoWithFfprobe(
             codec: videoStream.codec_name,
             width: videoStream.width,
             height: videoStream.height,
-            fps: videoStream.r_frame_rate
-              ? eval(videoStream.r_frame_rate)
-              : undefined,
+            fps: parseFfprobeFps(videoStream.r_frame_rate),
             bitrate: videoStream.bit_rate
               ? parseInt(videoStream.bit_rate, 10)
               : undefined,

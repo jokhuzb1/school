@@ -42,7 +42,7 @@ export function buildSeetongRtspUrl(params: {
   const streamId = profile === "main" ? 0 : 1;
   const user = encodeAuth(nvr.username);
   const pass = encodeAuth(nvr.password);
-  return `rtsp://${user}:${pass}@${nvr.host}:${nvr.rtspPort}/user=${nvr.username}&password=${nvr.password}&channel=${channelNo}&stream=${streamId}.sdp`;
+  return `rtsp://${user}:${pass}@${nvr.host}:${nvr.rtspPort}/user=${user}&password=${pass}&channel=${channelNo}&stream=${streamId}.sdp`;
 }
 
 /**

@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { requireRoles, requireSchoolScope } from "../../../utils/authz";
 import { sendHttpError } from "../../../utils/httpErrors";
 import { addDaysUtc, getDateOnlyInZone } from "../../../utils/date";
+import { WEBHOOK_ENFORCE_SECRET, WEBHOOK_SECRET_HEADER } from "../../../config";
 import {
   calculateAttendancePercent,
   getActiveClassIds,
@@ -17,6 +18,14 @@ import {
   computeNoScanSplit,
   getStatusCountsByRange,
 } from "../../attendance";
+import { recordDeviceOperation } from "../../devices/services/device-ops-metrics";
+
+function sanitizeSchool<T extends { webhookSecretIn?: string; webhookSecretOut?: string }>(
+  school: T,
+) {
+  const { webhookSecretIn, webhookSecretOut, ...rest } = school as any;
+  return rest as Omit<T, "webhookSecretIn" | "webhookSecretOut">;
+}
 
 export default async function (fastify: FastifyInstance) {
   fastify.get(
@@ -244,7 +253,7 @@ export default async function (fastify: FastifyInstance) {
 
         const school = await prisma.school.findUnique({ where: { id } });
         if (!school) return reply.status(404).send({ error: "not found" });
-        return school;
+        return sanitizeSchool(school);
       } catch (err) {
         return sendHttpError(reply, err);
       }
@@ -324,11 +333,140 @@ export default async function (fastify: FastifyInstance) {
 
         const school = await prisma.school.findUnique({ where: { id } });
         if (!school) return reply.status(404).send({ error: "Not found" });
+
+        const inPath = `/webhook/${school.id}/in`;
+        const outPath = `/webhook/${school.id}/out`;
         return {
-          inUrl: `/webhook/${school.id}/in?secret=${school.webhookSecretIn}`,
-          outUrl: `/webhook/${school.id}/out?secret=${school.webhookSecretOut}`,
+          enforceSecret: WEBHOOK_ENFORCE_SECRET,
+          secretHeaderName: WEBHOOK_SECRET_HEADER,
+
+          // Base endpoints (recommended to keep secrets out of URLs when possible)
+          inUrl: inPath,
+          outUrl: outPath,
+
+          // Hikvision/Device-friendly URLs (most devices can only set a URL, not custom headers)
+          inUrlWithSecret: `${inPath}?secret=${school.webhookSecretIn}`,
+          outUrlWithSecret: `${outPath}?secret=${school.webhookSecretOut}`,
+
+          // For integrations that can send headers (server-to-server, custom clients, etc.)
+          inSecret: school.webhookSecretIn,
+          outSecret: school.webhookSecretOut,
         };
       } catch (err) {
+        return sendHttpError(reply, err);
+      }
+    },
+  );
+
+  fastify.post(
+    "/:id/webhook/rotate",
+    { preHandler: [(fastify as any).authenticate] } as any,
+    async (request: any, reply) => {
+      const startedAt = Date.now();
+      try {
+        const { id } = request.params;
+        const { direction } = request.body as { direction?: "in" | "out" };
+        const user = request.user;
+
+        requireRoles(user, ["SCHOOL_ADMIN"]);
+        requireSchoolScope(user, id);
+
+        if (!direction || !["in", "out"].includes(direction)) {
+          return reply.status(400).send({ error: "direction must be in|out" });
+        }
+
+        const data =
+          direction === "in"
+            ? { webhookSecretIn: uuidv4() }
+            : { webhookSecretOut: uuidv4() };
+
+        const school = await prisma.school.update({
+          where: { id },
+          data,
+        });
+
+        logAudit(fastify, {
+          action: "school.webhook.rotate",
+          level: "warn",
+          message: `Webhook secret rotated (${direction})`,
+          userId: user.sub,
+          userRole: user.role,
+          requestId: request.id,
+          schoolId: id,
+          extra: { direction },
+        });
+
+        const inPath = `/webhook/${school.id}/in`;
+        const outPath = `/webhook/${school.id}/out`;
+        const response = {
+          ok: true,
+          info: {
+            enforceSecret: WEBHOOK_ENFORCE_SECRET,
+            secretHeaderName: WEBHOOK_SECRET_HEADER,
+            inUrl: inPath,
+            outUrl: outPath,
+            inUrlWithSecret: `${inPath}?secret=${school.webhookSecretIn}`,
+            outUrlWithSecret: `${outPath}?secret=${school.webhookSecretOut}`,
+            inSecret: school.webhookSecretIn,
+            outSecret: school.webhookSecretOut,
+          },
+        };
+        recordDeviceOperation("webhook.rotate", true, Date.now() - startedAt);
+        return response;
+      } catch (err) {
+        recordDeviceOperation("webhook.rotate", false, Date.now() - startedAt);
+        return sendHttpError(reply, err);
+      }
+    },
+  );
+
+  fastify.post(
+    "/:id/webhook/test",
+    { preHandler: [(fastify as any).authenticate] } as any,
+    async (request: any, reply) => {
+      const startedAt = Date.now();
+      try {
+        const { id } = request.params;
+        const { direction } = request.body as { direction?: "in" | "out" };
+        const user = request.user;
+
+        requireRoles(user, ["SCHOOL_ADMIN"]);
+        requireSchoolScope(user, id);
+
+        if (!direction || !["in", "out"].includes(direction)) {
+          return reply.status(400).send({ error: "direction must be in|out" });
+        }
+
+        const school = await prisma.school.findUnique({ where: { id } });
+        if (!school) return reply.status(404).send({ error: "Not found" });
+
+        const path =
+          direction === "in"
+            ? `/webhook/${school.id}/in?secret=${school.webhookSecretIn}`
+            : `/webhook/${school.id}/out?secret=${school.webhookSecretOut}`;
+
+        logAudit(fastify, {
+          action: "school.webhook.test",
+          level: "info",
+          message: `Webhook test requested (${direction})`,
+          userId: user.sub,
+          userRole: user.role,
+          requestId: request.id,
+          schoolId: id,
+          extra: { direction },
+        });
+
+        const response = {
+          ok: true,
+          direction,
+          method: "POST",
+          path,
+          testedAt: new Date().toISOString(),
+        };
+        recordDeviceOperation("webhook.test", true, Date.now() - startedAt);
+        return response;
+      } catch (err) {
+        recordDeviceOperation("webhook.test", false, Date.now() - startedAt);
         return sendHttpError(reply, err);
       }
     },

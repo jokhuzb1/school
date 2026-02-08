@@ -1,40 +1,31 @@
-import prisma from "./src/prisma";
+﻿import prisma from "./src/prisma";
 
-async function updateToMainStream() {
-  const schoolId = "4521bf61-2255-4bf0-be33-5d56fd9f6a87";
+type UpdateItem = { id: string; rtspUrl: string };
 
-  console.log("Updating camera stream URLs to MAIN stream (H.265)...\n");
+async function main() {
+  const updatesJson = process.env.CAMERA_RTSP_UPDATES_JSON || "";
+  if (!updatesJson) {
+    throw new Error(
+      "Missing CAMERA_RTSP_UPDATES_JSON env var (example: [{\"id\":\"...\",\"rtspUrl\":\"rtsp://...\"}])",
+    );
+  }
 
-  // Camera 1 - ch1/main
-  await prisma.camera.update({
-    where: { id: "db1cbc98-6063-4e7f-91af-35c8c6ea9915" },
-    data: {
-      streamUrl: "rtsp://admin:Paa123nv@192.168.100.58:554/ch1/main/av_stream",
-    },
-  });
-  console.log("✅ cam1: ch1/main/av_stream");
+  const updates = JSON.parse(updatesJson) as UpdateItem[];
+  if (!Array.isArray(updates) || updates.length === 0) {
+    throw new Error("CAMERA_RTSP_UPDATES_JSON must be a non-empty array");
+  }
 
-  // Camera 2 - ch2/main
-  await prisma.camera.update({
-    where: { id: "4996e6d7-330f-4afb-898b-d2af577339ee" },
-    data: {
-      streamUrl: "rtsp://admin:Paa123nv@192.168.100.58:554/ch2/main/av_stream",
-    },
-  });
-  console.log("✅ cam2: ch2/main/av_stream");
+  for (const item of updates) {
+    if (!item?.id || !item?.rtspUrl) {
+      throw new Error("Each update must include id and rtspUrl");
+    }
+    await prisma.camera.update({
+      where: { id: item.id },
+      data: { streamUrl: item.rtspUrl },
+    });
+  }
 
-  // Camera 3 - ch2/main
-  await prisma.camera.update({
-    where: { id: "62f2612a-50bc-4a02-abfe-3f53903f4f4a" },
-    data: {
-      streamUrl: "rtsp://admin:Paa123nv@192.168.100.58:554/ch2/main/av_stream",
-    },
-  });
-  console.log("✅ cam3: ch2/main/av_stream");
-
-  console.log("\nDone! All cameras updated to MAIN stream (H.265)");
+  console.log(`Updated ${updates.length} camera(s).`);
 }
 
-updateToMainStream()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+main().catch(console.error).finally(() => prisma.$disconnect());

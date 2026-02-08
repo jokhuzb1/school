@@ -5,7 +5,6 @@ import dayjs from "dayjs";
 import {
   ATTENDANCE_STATUS_TAG,
   EVENT_TYPE_TAG,
-  STATUS_COLORS,
 } from "../../../shared/attendance";
 import { getEventTagStyle, getStatusTagStyle } from "../../../shared/ui";
 
@@ -71,8 +70,5 @@ const EventTag: React.FC<EventTagProps> = ({
   );
 };
 
-// Status colors export (boshqa joylarda ishlatish uchun)
-export const statusColors: Record<AttendanceStatus, string> = STATUS_COLORS;
-
-export { StatusTag, EventTag, STATUS_CONFIG, EVENT_CONFIG };
+export { StatusTag, EventTag };
 export default StatusTag;

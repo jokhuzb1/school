@@ -71,7 +71,9 @@ const getOnvifDevice = async (params: {
   onvifPort: number;
   username: string;
   password: string;
+  timeoutMs?: number;
 }) => {
+  const timeoutMs = params.timeoutMs ?? 5000;
   const onvif = await import("onvif");
   const OnvifDevice = (onvif as any).OnvifDevice;
   const xaddr = `http://${params.host}:${params.onvifPort}/onvif/device_service`;
@@ -80,7 +82,7 @@ const getOnvifDevice = async (params: {
     user: params.username,
     pass: params.password,
   });
-  await device.init();
+  await withTimeout(device.init(), timeoutMs, "device.init");
   return device;
 };
 
@@ -111,8 +113,8 @@ export async function fetchOnvifProfiles(params: {
   timeoutMs?: number;
   concurrency?: number;
 }) {
-  const device = await getOnvifDevice(params);
   const timeoutMs = params.timeoutMs ?? 5000;
+  const device = await getOnvifDevice({ ...params, timeoutMs });
   const concurrency = Math.max(1, params.concurrency ?? 4);
   const profiles =
     (await withTimeout(
@@ -158,8 +160,8 @@ export async function fetchOnvifDeviceInfo(params: {
   password: string;
   timeoutMs?: number;
 }): Promise<OnvifDeviceInfo> {
-  const device = await getOnvifDevice(params);
   const timeoutMs = params.timeoutMs ?? 5000;
+  const device = await getOnvifDevice({ ...params, timeoutMs });
   const info = await withTimeout(
     withCallback<OnvifDeviceInfo>((cb) => device.getDeviceInformation(cb)),
     timeoutMs,

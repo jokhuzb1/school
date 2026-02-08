@@ -1,0 +1,22 @@
+/* ============================================
+   Pages Styles - Modular Imports
+   ============================================ 
+   
+   DRY Principle: Sahifa stillari alohida modullarga bo'lingan.
+   Har bir sahifa uchun alohida CSS fayl mavjud.
+   
+   Structure:
+   - base.css: Umumiy page layout, panel helpers
+   - stats.css: Stats bar va stat cards
+   - students.css: Diagnostics, filter, pagination
+   - classes.css: Classes grid, grade groups
+   - devices.css: Device select, webhook, provisioning
+   - add-students.css: Form components
+   ============================================ */
+
+@import "./pages/base.css";
+@import "./pages/stats.css";
+@import "./pages/students.css";
+@import "./pages/classes.css";
+@import "./pages/devices.css";
+@import "./pages/add-students.css";

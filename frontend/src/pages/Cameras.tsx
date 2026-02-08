@@ -69,6 +69,43 @@ const getNvrStatusTag = (status?: string | null) => {
   return <Tag color="gray">Unknown</Tag>;
 };
 
+const RTSP_VENDOR_OPTIONS = [
+  { value: "hikvision", label: "Hikvision" },
+  { value: "seetong", label: "Seetong" },
+  { value: "dahua", label: "Dahua" },
+  { value: "generic", label: "Generic/ONVIF" },
+];
+
+const buildRtspUrlLocal = (params: {
+  vendor: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  channelNo: number;
+  profile: "main" | "sub";
+}) => {
+  const { vendor, host, port, username, password, channelNo, profile } = params;
+  const encUser = encodeURIComponent(username);
+  const encPass = encodeURIComponent(password);
+
+  if (vendor === "seetong") {
+    const streamId = profile === "main" ? 0 : 1;
+    return `rtsp://${encUser}:${encPass}@${host}:${port}/user=${encUser}&password=${encPass}&channel=${channelNo}&stream=${streamId}.sdp`;
+  }
+  if (vendor === "dahua") {
+    const subtype = profile === "main" ? 0 : 1;
+    return `rtsp://${encUser}:${encPass}@${host}:${port}/cam/realmonitor?channel=${channelNo}&subtype=${subtype}`;
+  }
+  if (vendor === "generic") {
+    return `rtsp://${encUser}:${encPass}@${host}:${port}/ch${channelNo}/${profile}/av_stream`;
+  }
+  // Default: Hikvision
+  const streamId = profile === "main" ? 1 : 2;
+  const channel = channelNo * 100 + streamId;
+  return `rtsp://${encUser}:${encPass}@${host}:${port}/Streaming/Channels/${channel}`;
+};
+
 const Cameras: React.FC = () => {
   const { schoolId, isSchoolAdmin, isSuperAdmin } = useSchool();
   const { setRefresh, setLastUpdated } = useHeaderMeta();
@@ -116,6 +153,49 @@ const Cameras: React.FC = () => {
   const [deployForm] = Form.useForm();
 
   const canManage = isSchoolAdmin || isSuperAdmin;
+
+  const streamUrlMode = Form.useWatch("streamUrlMode", cameraForm);
+  const streamVendor = Form.useWatch("streamVendor", cameraForm);
+  const rtspHost = Form.useWatch("rtspHost", cameraForm);
+  const rtspPort = Form.useWatch("rtspPort", cameraForm);
+  const rtspUsername = Form.useWatch("rtspUsername", cameraForm);
+  const rtspPassword = Form.useWatch("rtspPassword", cameraForm);
+  const rtspChannelNo = Form.useWatch("channelNo", cameraForm);
+  const rtspProfile = Form.useWatch("streamProfile", cameraForm);
+  const autoGenerateUrl = Form.useWatch("autoGenerateUrl", cameraForm);
+
+  const rtspPreview = useMemo(() => {
+    if (streamUrlMode !== "parts") return "";
+    if (
+      !streamVendor ||
+      !rtspHost ||
+      !rtspPort ||
+      !rtspUsername ||
+      !rtspPassword ||
+      !rtspChannelNo ||
+      !rtspProfile
+    ) {
+      return "";
+    }
+    return buildRtspUrlLocal({
+      vendor: streamVendor,
+      host: rtspHost,
+      port: Number(rtspPort),
+      username: rtspUsername,
+      password: rtspPassword,
+      channelNo: Number(rtspChannelNo),
+      profile: rtspProfile,
+    });
+  }, [
+    streamUrlMode,
+    streamVendor,
+    rtspHost,
+    rtspPort,
+    rtspUsername,
+    rtspPassword,
+    rtspChannelNo,
+    rtspProfile,
+  ]);
 
   const getWebrtcSettingsRaw = () =>
     localStorage.getItem("webrtcIceServers") ||
@@ -338,6 +418,12 @@ const Cameras: React.FC = () => {
         externalId: camera.externalId || undefined,
         channelNo: camera.channelNo || undefined,
         streamUrl: camera.streamUrl || undefined,
+        streamUrlMode: "full",
+        streamVendor: "hikvision",
+        rtspHost: "",
+        rtspPort: 554,
+        rtspUsername: "",
+        rtspPassword: "",
         streamProfile: camera.streamProfile || "main",
         autoGenerateUrl: camera.autoGenerateUrl ?? true,
         status: camera.status,
@@ -349,6 +435,9 @@ const Cameras: React.FC = () => {
         isActive: true,
         streamProfile: "sub", // Default: H.264 for WebRTC compatibility
         autoGenerateUrl: true,
+        streamUrlMode: "parts",
+        streamVendor: "hikvision",
+        rtspPort: 554,
       });
     }
     setCameraDrawerOpen(true);
@@ -398,6 +487,40 @@ const Cameras: React.FC = () => {
     try {
       const values = await cameraForm.validateFields();
       const payload = { ...values } as Record<string, any>;
+      if (payload.autoGenerateUrl === false) {
+        if (payload.streamUrlMode === "parts") {
+          const missing =
+            !payload.rtspHost ||
+            !payload.rtspPort ||
+            !payload.rtspUsername ||
+            !payload.rtspPassword ||
+            !payload.channelNo ||
+            !payload.streamProfile ||
+            !payload.streamVendor;
+          if (missing) {
+            message.error("RTSP qismlarini to'liq kiriting");
+            return;
+          }
+          payload.streamUrl = buildRtspUrlLocal({
+            vendor: payload.streamVendor,
+            host: payload.rtspHost,
+            port: Number(payload.rtspPort),
+            username: payload.rtspUsername,
+            password: payload.rtspPassword,
+            channelNo: Number(payload.channelNo),
+            profile: payload.streamProfile,
+          });
+        } else if (!payload.streamUrl) {
+          message.error("To'liq RTSP URL kiriting yoki qismlardan yarating");
+          return;
+        }
+      }
+      delete payload.streamUrlMode;
+      delete payload.streamVendor;
+      delete payload.rtspHost;
+      delete payload.rtspPort;
+      delete payload.rtspUsername;
+      delete payload.rtspPassword;
       if (editingCamera) {
         await cameraApi.updateCamera(editingCamera.id, payload);
         message.success("Kamera yangilandi");
@@ -1093,9 +1216,7 @@ const Cameras: React.FC = () => {
               streamInfo?.webrtcPath && (
                 <HlsPlayer
                   key={`hls-${selectedCamera.id}-${webrtcConfigVersion}`}
-                  hlsUrl={
-                    streamInfo.hlsUrl || buildHlsUrl(streamInfo.webrtcPath)
-                  }
+                  hlsUrl={buildHlsUrl(streamInfo.webrtcPath)}
                   onError={(err) => console.log("HLS error:", err)}
                 />
               )
@@ -1346,12 +1467,62 @@ const Cameras: React.FC = () => {
             <Switch />
           </Form.Item>
           <Form.Item
-            name="streamUrl"
-            label="Stream URL"
-            tooltip="Avtomatik yaratish o'chirilgan bo'lsa, to'liq RTSP URL kiriting"
+            name="streamUrlMode"
+            label="RTSP kirish usuli"
+            tooltip="Qismlardan yig'ish yoki to'liq URL kiriting"
           >
-            <Input placeholder="rtsp://user:pass@192.168.1.1:554/ch1/main/av_stream" />
+            <Select
+              disabled={autoGenerateUrl}
+              options={[
+                { value: "parts", label: "Qismlardan yig'ish" },
+                { value: "full", label: "To'liq URL" },
+              ]}
+            />
           </Form.Item>
+          {streamUrlMode === "parts" ? (
+            <>
+              <Form.Item name="streamVendor" label="Qurilma turi">
+                <Select disabled={autoGenerateUrl} options={RTSP_VENDOR_OPTIONS} />
+              </Form.Item>
+              <Form.Item name="rtspHost" label="Host / IP">
+                <Input disabled={autoGenerateUrl} placeholder="192.168.1.10" />
+              </Form.Item>
+              <Form.Item name="rtspPort" label="RTSP Port">
+                <InputNumber
+                  min={1}
+                  max={65535}
+                  style={{ width: "100%" }}
+                  disabled={autoGenerateUrl}
+                  placeholder="554"
+                />
+              </Form.Item>
+              <Form.Item name="rtspUsername" label="RTSP User">
+                <Input disabled={autoGenerateUrl} placeholder="admin" />
+              </Form.Item>
+              <Form.Item name="rtspPassword" label="RTSP Parol">
+                <Input.Password disabled={autoGenerateUrl} />
+              </Form.Item>
+              <Alert
+                type="info"
+                showIcon
+                message="Yig'ilgan RTSP URL"
+                description={
+                  rtspPreview || "Ma'lumotlar to'liq emas"
+                }
+              />
+            </>
+          ) : (
+            <Form.Item
+              name="streamUrl"
+              label="Stream URL"
+              tooltip="Avtomatik yaratish o'chirilgan bo'lsa, to'liq RTSP URL kiriting"
+            >
+              <Input
+                disabled={autoGenerateUrl}
+                placeholder="rtsp://user:pass@192.168.1.1:554/ch1/main/av_stream"
+              />
+            </Form.Item>
+          )}
           <Form.Item
             name="externalId"
             label="External ID"

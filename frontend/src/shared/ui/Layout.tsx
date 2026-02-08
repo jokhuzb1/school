@@ -28,7 +28,8 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useSchool } from "../../hooks/useSchool";
 import { buildMenuItems } from "./layoutMenu";
-import { HeaderMetaProvider, useHeaderMeta } from "./HeaderMetaContext";
+import { HeaderMetaProvider } from "./HeaderMetaProvider";
+import { useHeaderMeta } from "./useHeaderMeta";
 import {
   fullHeightLayoutStyle,
   getLiveIconStyle,
@@ -151,7 +152,7 @@ const LayoutInner: React.FC = () => {
   const lastInputRef = useRef("");
 
   // URL'dan schoolId ni olish (SuperAdmin maktab panelida bo'lganda)
-  const urlSchoolId = location.pathname.match(/\/schools\/([^\/]+)/)?.[1];
+  const urlSchoolId = location.pathname.match(/\/schools\/([^/]+)/)?.[1];
   const schoolId = urlSchoolId || contextSchoolId;
   const isViewingSchool = !!urlSchoolId; // SuperAdmin maktab panelini ko'rayaptimi?
   const backState = (location.state || {}) as BackState;

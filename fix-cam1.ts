@@ -1,26 +1,18 @@
-import prisma from "./src/prisma";
+﻿import prisma from "./src/prisma";
 
-async function fixCamera1() {
-  const schoolId = "4521bf61-2255-4bf0-be33-5d56fd9f6a87";
+async function main() {
+  const cameraId = process.env.CAMERA_ID || "";
+  const rtspUrl = process.env.RTSP_URL || "";
 
-  // cam1 ID
-  const cam1Id = "db1cbc98-6063-4e7f-91af-35c8c6ea9915";
+  if (!cameraId) throw new Error("Missing CAMERA_ID env var");
+  if (!rtspUrl) throw new Error("Missing RTSP_URL env var");
 
-  console.log("Fixing cam1 stream URL...\n");
-
-  // Update cam1 to use correct sub stream format
   await prisma.camera.update({
-    where: { id: cam1Id },
-    data: {
-      streamUrl: "rtsp://admin:Paa123nv@192.168.100.58:554/ch1/sub/av_stream",
-    },
+    where: { id: cameraId },
+    data: { streamUrl: rtspUrl },
   });
 
-  console.log("✅ cam1 updated to:");
-  console.log("   rtsp://admin:Paa123nv@192.168.100.58:554/ch1/sub/av_stream");
-  console.log("\nDone!");
+  console.log("Updated camera streamUrl.");
 }
 
-fixCamera1()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+main().catch(console.error).finally(() => prisma.$disconnect());

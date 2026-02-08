@@ -55,7 +55,7 @@ const Schools: React.FC = () => {
                 setLoading(false);
             }
         }
-    }, [attendanceScope]);
+    }, [attendanceScope, setLastUpdated]);
 
     useEffect(() => {
         fetchSchools();
@@ -406,7 +406,7 @@ const Schools: React.FC = () => {
                         name="phone" 
                         label="Telefon"
                         rules={[
-                            { pattern: /^[\d\s\+\-\(\)]+$/, message: 'Noto\'g\'ri telefon formati' }
+                            { pattern: /^[\d\s+\-()]+$/, message: 'Noto\'g\'ri telefon formati' }
                         ]}
                     >
                         <Input prefix={<PhoneOutlined />} placeholder="+998 XX XXX XX XX" />

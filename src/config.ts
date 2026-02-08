@@ -26,6 +26,12 @@ export const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
 export const WEBHOOK_ENFORCE_SECRET = IS_PROD;
 export const WEBHOOK_SECRET_HEADER = "x-webhook-secret";
 
+// Devices (FaceID terminals) - auto provision on first valid webhook event.
+// Recommended only when webhook secrets are enforced (production).
+export const DEVICE_AUTO_REGISTER_ENABLED =
+  process.env.DEVICE_AUTO_REGISTER_ENABLED === "true" ||
+  process.env.DEVICE_AUTO_REGISTER_ENABLED === "1";
+
 export const SSE_TOKEN_TTL_SECONDS = Number(
   process.env.SSE_TOKEN_TTL_SECONDS || "300",
 );
@@ -53,3 +59,15 @@ export const ONVIF_CONCURRENCY = Number(
 export const MEDIAMTX_DEPLOY_ENABLED =
   process.env.MEDIAMTX_DEPLOY_ENABLED === "true" ||
   process.env.MEDIAMTX_DEPLOY_ENABLED === "1";
+
+export const MEDIAMTX_DEPLOY_ALLOW_RESTART_COMMANDS =
+  process.env.MEDIAMTX_DEPLOY_ALLOW_RESTART_COMMANDS === "true" ||
+  process.env.MEDIAMTX_DEPLOY_ALLOW_RESTART_COMMANDS === "1";
+
+export const PROVISIONING_TOKEN = process.env.PROVISIONING_TOKEN || "";
+
+export const DEVICE_STUDENT_ID_STRATEGY =
+  (process.env.DEVICE_STUDENT_ID_STRATEGY || "uuid").toLowerCase();
+export const DEVICE_STUDENT_ID_LENGTH = Number(
+  process.env.DEVICE_STUDENT_ID_LENGTH || "10",
+);

@@ -6,12 +6,28 @@ import { IS_PROD, SSE_TOKEN_TTL_SECONDS } from "../../../config";
 export default async function (fastify: FastifyInstance) {
   fastify.post('/login', async (request: any, reply) => {
     const { email, password } = request.body;
+    fastify.log.info(
+      {
+        email,
+        ip: request.ip,
+        origin: request.headers?.origin,
+        userAgent: request.headers?.['user-agent'],
+      },
+      'auth.login attempt'
+    );
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return reply.status(401).send({ error: 'Invalid credentials' });
+    if (!user) {
+      fastify.log.warn({ email }, 'auth.login user not found');
+      return reply.status(401).send({ error: 'Invalid credentials' });
+    }
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return reply.status(401).send({ error: 'Invalid credentials' });
+    if (!ok) {
+      fastify.log.warn({ email, userId: user.id }, 'auth.login invalid password');
+      return reply.status(401).send({ error: 'Invalid credentials' });
+    }
 
     const token = fastify.jwt.sign({ sub: user.id, role: user.role, schoolId: user.schoolId });
+    fastify.log.info({ email, userId: user.id }, 'auth.login success');
     const safeUser = {
       id: user.id,
       email: user.email,

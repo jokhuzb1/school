@@ -1,15 +1,20 @@
-import prisma from "./src/prisma";
+﻿import prisma from "./src/prisma";
 
-async function updateCam1() {
+async function main() {
+  const cameraId = process.env.CAMERA_ID || "";
+  const rtspUrl = process.env.RTSP_URL || "";
+
+  if (!cameraId) throw new Error("Missing CAMERA_ID env var");
+  if (!rtspUrl) throw new Error("Missing RTSP_URL env var");
+
   await prisma.camera.update({
-    where: { id: "db1cbc98-6063-4e7f-91af-35c8c6ea9915" },
-    data: {
-      streamUrl: "rtsp://admin:Paa123nv@192.168.100.58:554/ch1/main/av_stream",
-    },
+    where: { id: cameraId },
+    data: { streamUrl: rtspUrl },
   });
-  console.log("✅ cam1 updated to 192.168.100.58 main stream");
+
+  console.log("Updated camera streamUrl.");
 }
 
-updateCam1()
+main()
   .catch(console.error)
   .finally(() => prisma.$disconnect());
