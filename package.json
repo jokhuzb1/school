@@ -13,6 +13,7 @@
     "start": "node dist/server.js",
     "db:migrate": "prisma migrate dev --name init",
     "db:diff": "powershell -ExecutionPolicy Bypass -File scripts/migrate-diff.ps1",
+    "db:seed:prod": "node dist/prisma/seed.js",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "set SEED_WIPE=false&& ts-node prisma/seed.ts",
     "db:seed:reset": "set SEED_WIPE=true&& ts-node prisma/seed.ts",
