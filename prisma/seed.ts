@@ -220,6 +220,95 @@ async function seedRealSchoolData(schoolId: string) {
   console.log("🎉 Real school data seeded successfully!");
 }
 
+async function seedRealSchoolTeachers(schoolId: string) {
+  console.log("👨‍🏫 Seeding real school teachers (93 teacher accounts)...");
+
+  // Har bir sinf uchun teacher user yaratish
+  const uniqueTeachers = new Map<string, { name: string; phone: string; classes: string[] }>();
+
+  // Teacher ismini email'ga o'girish
+  const nameToEmail = (name: string): string => {
+    return name
+      .toLowerCase()
+      .replace(/\s+/g, ".")
+      .replace(/[^a-z.]/g, "")
+      + "@school1.uz";
+  };
+
+  // Unique teacherlarni topish
+  for (const cls of REAL_CLASSES) {
+    const className = `${cls.grade}${cls.section}`;
+    const teacherKey = `${cls.teacher}_${cls.phone}`;
+
+    if (!uniqueTeachers.has(teacherKey)) {
+      uniqueTeachers.set(teacherKey, {
+        name: cls.teacher,
+        phone: cls.phone,
+        classes: [className],
+      });
+    } else {
+      uniqueTeachers.get(teacherKey)!.classes.push(className);
+    }
+  }
+
+  console.log(`  Found ${uniqueTeachers.size} unique teachers`);
+
+  // Har bir teacher uchun user yaratish
+  const password = await bcrypt.hash("teacher123", 10);
+  let teacherCount = 0;
+
+  for (const [key, teacher] of uniqueTeachers.entries()) {
+    const email = nameToEmail(teacher.name);
+
+    // User mavjudligini tekshirish
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      console.log(`  ⚠️  Teacher already exists: ${email}`);
+      continue;
+    }
+
+    // Sinflarning ID'larini topish
+    const classes = await prisma.class.findMany({
+      where: {
+        schoolId,
+        name: { in: teacher.classes },
+      },
+      select: { id: true, name: true },
+    });
+
+    if (classes.length === 0) {
+      console.warn(`  ⚠️  No classes found for teacher: ${teacher.name}`);
+      continue;
+    }
+
+    // User yaratish
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password,
+        name: teacher.name,
+        role: "TEACHER",
+        schoolId,
+        teacherClasses: {
+          create: classes.map(cls => ({
+            classId: cls.id,
+          })),
+        },
+      },
+    });
+
+    teacherCount++;
+
+    if (teacherCount % 10 === 0) {
+      console.log(`  ✓ Created ${teacherCount}/${uniqueTeachers.size} teachers`);
+    }
+  }
+
+  console.log(`  ✅ All ${teacherCount} teachers created`);
+  console.log("🎉 Teacher accounts created successfully!");
+}
+
+
 async function main() {
   console.log("Seed config:", config);
 
@@ -437,6 +526,7 @@ const buildEventKey = (parts: string[]) =>
 
     // Real school ma'lumotlarini qo'shish
     await seedRealSchoolData(baseSchool.id);
+    await seedRealSchoolTeachers(baseSchool.id);
   }
 
   const schoolIndexOffset = config.includeBaseSeed ? 1 : 0;
