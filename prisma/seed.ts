@@ -40,7 +40,7 @@ const config: SeedConfig = {
   classesPerSchool: getEnvNumber("SEED_CLASSES_PER_SCHOOL", 6),
   studentsPerClass: getEnvNumber("SEED_STUDENTS_PER_CLASS", 50),
   days: getEnvNumber("SEED_DAYS", 14),
-  includeToday: getEnvBoolean("SEED_INCLUDE_TODAY", true),
+  includeToday: getEnvBoolean("SEED_INCLUDE_TODAY", false),
   skipWeekends: getEnvBoolean("SEED_SKIP_WEEKENDS", true),
   lateThresholdMinutes: getEnvNumber("SEED_LATE_THRESHOLD", 15),
   attendanceRate: Number(process.env.SEED_ATTENDANCE_RATE || 0.94),
