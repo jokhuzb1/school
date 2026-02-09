@@ -8,7 +8,7 @@
 import { Gender } from "@prisma/client";
 
 // O'zbekcha erkak ismlari (lotin)
-const MALE_FIRST_NAMES = [
+export const MALE_FIRST_NAMES = [
   "Akmal", "Aziz", "Bobur", "Jasur", "Doston", "Diyor", "Sanjarbek", "Farxod",
   "Umid", "Otabek", "Shoxrux", "Jamshid", "Norbek", "Ulug'bek", "Temur",
   "Komil", "Anvar", "Sherzod", "Farrux", "Erkin", "Bahrom", "Nodir",
@@ -17,7 +17,7 @@ const MALE_FIRST_NAMES = [
   "Asad", "Doniyorbek", "Elyor", "Fozil", "Karim", "Latif", "Mansur", "Naim"
 ];
 
-const FEMALE_FIRST_NAMES = [
+export const FEMALE_FIRST_NAMES = [
   "Gulnora", "Nilufar", "Shahnoza", "Mohira", "Dilnoza", "Nigora", "Zulfiya",
   "Malika", "Dildora", "Muqaddas", "Farangiz", "Sevara", "Gulbahor", "Ozoda",
   "Nigina", "Shahzoda", "Madina", "Sabina", "Dilafruz", "Gulchehra", "Nozima",
@@ -25,7 +25,7 @@ const FEMALE_FIRST_NAMES = [
   "Gulnar", "Dilbar", "Zarina", "Kamola", "Lola", "Matluba", "Nafisa"
 ];
 
-const LAST_NAMES = [
+export const LAST_NAMES = [
   "Toshev", "Aliev", "Karimov", "Rahimov", "Usmanov", "Yusupov", "Mirzayev",
   "Ahmedov", "Xolmatov", "Abdullayev", "Ismoilov", "Saidov", "Sharipov",
   "Jo'rayev", "Hasanov", "Azimov", "Boboyev", "Norov", "Qosimov", "To'xtayev",
@@ -34,7 +34,7 @@ const LAST_NAMES = [
   "Nuriddinov", "Qurbonov", "Jalilov", "Malikov", "Sultonov", "Salimov"
 ];
 
-const FATHER_NAMES = [
+export const FATHER_NAMES = [
   "Abdulla", "Akbar", "Alisher", "Anvar", "Aziz", "Bahrom", "Jasur", "Kamol",
   "Latif", "Mansur", "Nodir", "Otabek", "Rashid", "Salim", "Temur", "Umid",
   "Farxod", "Shavkat", "Erkin", "Yusuf", "Zafar", "Ikrom", "Komil", "Naim"

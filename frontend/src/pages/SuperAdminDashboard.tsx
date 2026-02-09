@@ -326,8 +326,12 @@ const SuperAdminDashboard: React.FC = () => {
 
   const { totals, schools, weeklyStats } = data;
 
-  // Maktablarni davomat bo'yicha tartiblash (reytingg)
-  const sortedSchools = [...schools].sort((a, b) => b.attendancePercent - a.attendancePercent);
+  // Maktablarni tartib raqami bo'yicha saralash (1-maktab, 2-maktab, ...)
+  const sortedSchools = [...schools].sort((a, b) => {
+    const numA = parseInt(a.name.match(/\d+/)?.[0] || "0", 10);
+    const numB = parseInt(b.name.match(/\d+/)?.[0] || "0", 10);
+    return numA - numB;
+  });
 
   // Muammoli maktablar (davomat < 80% yoki qurilma muammosi)
   const problemSchools = schools.filter(s => s.attendancePercent < 80);

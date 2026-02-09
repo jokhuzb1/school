@@ -2,7 +2,7 @@ import { PrismaClient, AttendanceStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { getLocalDateKey, getLocalDateOnly } from "../src/utils/date";
 import crypto from "crypto";
-import { REAL_CLASSES, REAL_STUDENTS } from "./real_school_data";
+import { REAL_CLASSES, REAL_STUDENTS, MALE_FIRST_NAMES, FEMALE_FIRST_NAMES, LAST_NAMES, FATHER_NAMES } from "./real_school_data";
 
 const prisma = new PrismaClient();
 
@@ -43,10 +43,10 @@ const config: SeedConfig = {
   includeToday: getEnvBoolean("SEED_INCLUDE_TODAY", true),
   skipWeekends: getEnvBoolean("SEED_SKIP_WEEKENDS", true),
   lateThresholdMinutes: getEnvNumber("SEED_LATE_THRESHOLD", 15),
-  attendanceRate: Number(process.env.SEED_ATTENDANCE_RATE || 0.7),
-  lateRate: Number(process.env.SEED_LATE_RATE || 0.15),
-  absentRate: Number(process.env.SEED_ABSENT_RATE || 0.1),
-  excusedRate: Number(process.env.SEED_EXCUSED_RATE || 0.05),
+  attendanceRate: Number(process.env.SEED_ATTENDANCE_RATE || 0.94),
+  lateRate: Number(process.env.SEED_LATE_RATE || 0.05),
+  absentRate: Number(process.env.SEED_ABSENT_RATE || 0.003),
+  excusedRate: Number(process.env.SEED_EXCUSED_RATE || 0.007),
   withEvents: getEnvBoolean("SEED_WITH_EVENTS", false),
   wipe: getEnvBoolean("SEED_WIPE", false),
   includeBaseSeed: getEnvBoolean("SEED_INCLUDE_BASE", true),
@@ -58,10 +58,22 @@ const START_TIMES = ["08:00", "09:00", "10:00", "12:00", "14:00"];
 const randomInt = (min: number, max: number) =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
-const splitName = (fullName: string) => {
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length === 1) return { lastName: parts[0], firstName: "" };
-  return { lastName: parts[0], firstName: parts.slice(1).join(" ") };
+const randomItem = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+// O'zbek ismini generatsiya qilish
+const generateUzbekName = (gender: "MALE" | "FEMALE") => {
+  const firstName = gender === "MALE" 
+    ? randomItem(MALE_FIRST_NAMES) 
+    : randomItem(FEMALE_FIRST_NAMES);
+  const lastName = randomItem(LAST_NAMES);
+  const fatherName = randomItem(FATHER_NAMES);
+  
+  return {
+    firstName,
+    lastName,
+    fatherName,
+    fullName: `${lastName} ${firstName}`,
+  };
 };
 
 const pickStatus = (): AttendanceStatus => {
@@ -217,6 +229,121 @@ async function seedRealSchoolData(schoolId: string) {
   }
 
   console.log(`  ✅ All ${REAL_STUDENTS.length} students created`);
+
+  // 3. Attendance ma'lumotlarini yaratish
+  console.log("  📊 Generating attendance data for real school...");
+
+  // Sinflar uchun start time map
+  const classStartMap = new Map<string, { hour: number; minute: number }>();
+  for (const cls of REAL_CLASSES) {
+    const className = `${cls.grade}${cls.section}`;
+    const classId = classMap.get(className);
+    if (classId) {
+      classStartMap.set(classId, { hour: 8, minute: 0 }); // Default 08:00
+    }
+  }
+
+  // Device olish yoki yaratish
+  const device = await prisma.device.upsert({
+    where: { deviceId: "1maktab" },
+    update: {},
+    create: {
+      deviceId: "1maktab",
+      name: "1-Maktab Asosiy Kirish",
+      schoolId,
+      type: "ENTRANCE",
+    },
+  });
+
+  // Barcha studentlarni olish
+  const allStudents = await prisma.student.findMany({
+    where: { schoolId },
+    select: { id: true, classId: true },
+  });
+
+  console.log(`  📋 Found ${allStudents.length} students for attendance generation`);
+
+  // Date list yaratish (config'dan)
+  const dateList = buildDateList();
+  console.log(`  📅 Generating attendance for ${dateList.length} days`);
+
+  const attendanceBatch: Array<any> = [];
+  const eventBatch: Array<any> = [];
+  const batchLimit = 1000;
+  let processedStudents = 0;
+
+  for (const student of allStudents) {
+    const classStart = classStartMap.get(student.classId || "") || { hour: 8, minute: 0 };
+
+    for (const dateOnly of dateList) {
+      const status = pickStatus();
+      let firstScanTime: Date | null = null;
+      let lastOutTime: Date | null = null;
+      let lateMinutes: number | null = null;
+      let totalTimeOnPremises: number | null = null;
+
+      if (status === "PRESENT" || status === "LATE") {
+        let offsetMinutes = randomInt(-10, 5);
+        if (status === "LATE") {
+          lateMinutes = randomInt(1, 30);
+          offsetMinutes = 15 + lateMinutes; // lateThresholdMinutes = 15
+        }
+
+        firstScanTime = buildTime(
+          dateOnly,
+          classStart.hour,
+          classStart.minute,
+          offsetMinutes,
+        );
+        lastOutTime = new Date(firstScanTime);
+        lastOutTime.setMinutes(
+          lastOutTime.getMinutes() + randomInt(240, 360),
+        );
+        totalTimeOnPremises = Math.round(
+          (lastOutTime.getTime() - firstScanTime.getTime()) / 60000,
+        );
+      }
+
+      attendanceBatch.push({
+        studentId: student.id,
+        schoolId,
+        date: dateOnly,
+        status,
+        firstScanTime,
+        lastScanTime: lastOutTime || firstScanTime,
+        lateMinutes,
+        totalTimeOnPremises,
+        lastInTime: firstScanTime,
+        lastOutTime,
+        currentlyInSchool: false,
+        scanCount: firstScanTime ? (lastOutTime ? 2 : 1) : 0,
+      });
+
+      // Batch insert
+      if (attendanceBatch.length >= batchLimit) {
+        await prisma.dailyAttendance.createMany({
+          data: attendanceBatch,
+          skipDuplicates: true,
+        });
+        attendanceBatch.length = 0;
+      }
+    }
+
+    processedStudents++;
+    if (processedStudents % 500 === 0) {
+      console.log(`  ✓ Processed ${processedStudents}/${allStudents.length} students`);
+    }
+  }
+
+  // Flush remaining
+  if (attendanceBatch.length > 0) {
+    await prisma.dailyAttendance.createMany({
+      data: attendanceBatch,
+      skipDuplicates: true,
+    });
+  }
+
+  console.log(`  ✅ Attendance data created for ${allStudents.length} students`);
   console.log("🎉 Real school data seeded successfully!");
 }
 
@@ -368,6 +495,7 @@ const buildEventKey = (parts: string[]) =>
       ? await prisma.school.update({
           where: { id: existingBaseSchool.id },
           data: {
+            schoolNumber: 1,
             name: "Namangan 1-maktab",
             address: "Namangan shahri",
             phone: "+998 69 221 00 01",
@@ -379,6 +507,7 @@ const buildEventKey = (parts: string[]) =>
         })
       : await prisma.school.create({
           data: {
+            schoolNumber: 1,
             name: "Namangan 1-maktab",
             address: "Namangan shahri",
             phone: "+998 69 221 00 01",
@@ -436,6 +565,118 @@ const buildEventKey = (parts: string[]) =>
         type: "ENTRANCE",
       },
     });
+
+    // === Camera system seed data ===
+    console.log("📹 Seeding camera system data...");
+
+    // NVR yaratish
+    const baseNvr = await prisma.nvr.upsert({
+      where: { id: "nvr-1maktab-main" },
+      update: {
+        name: "1-Maktab Asosiy NVR",
+        vendor: "Hikvision",
+        model: "DS-7608NI-K2/8P",
+        host: "192.168.1.50",
+        httpPort: 80,
+        onvifPort: 80,
+        rtspPort: 554,
+        username: "admin",
+        passwordEncrypted: "demo123",
+        protocol: "ONVIF",
+        isActive: true,
+      },
+      create: {
+        id: "nvr-1maktab-main",
+        schoolId: baseSchool.id,
+        name: "1-Maktab Asosiy NVR",
+        vendor: "Hikvision",
+        model: "DS-7608NI-K2/8P",
+        host: "192.168.1.50",
+        httpPort: 80,
+        onvifPort: 80,
+        rtspPort: 554,
+        username: "admin",
+        passwordEncrypted: "demo123",
+        protocol: "ONVIF",
+        isActive: true,
+      },
+    });
+
+    // Camera Areas yaratish
+    const cameraAreas = [
+      { id: "area-entrance", name: "Kirish", description: "Asosiy kirish eshigi" },
+      { id: "area-corridor-1", name: "1-qavat koridor", description: "Birinchi qavat yo'lagi" },
+      { id: "area-corridor-2", name: "2-qavat koridor", description: "Ikkinchi qavat yo'lagi" },
+      { id: "area-room-1a", name: "1-A sinf", description: "Birinchi sinf A guruh" },
+      { id: "area-room-1b", name: "1-B sinf", description: "Birinchi sinf B guruh" },
+      { id: "area-room-2a", name: "2-A sinf", description: "Ikkinchi sinf A guruh" },
+      { id: "area-courtyard", name: "Hovli", description: "Maktab hovlisi" },
+      { id: "area-lab", name: "Laboratoriya", description: "Kompyuter laboratoriyasi" },
+    ];
+
+    for (const area of cameraAreas) {
+      await prisma.cameraArea.upsert({
+        where: { id: area.id },
+        update: {
+          name: area.name,
+          description: area.description,
+          nvrId: baseNvr.id,
+        },
+        create: {
+          id: area.id,
+          schoolId: baseSchool.id,
+          nvrId: baseNvr.id,
+          name: area.name,
+          description: area.description,
+        },
+      });
+    }
+
+    // Cameras yaratish
+    const cameras = [
+      { id: "cam-1", name: "Kirish 1", areaId: "area-entrance", channelNo: 1, status: "ONLINE" as const },
+      { id: "cam-2", name: "Kirish 2", areaId: "area-entrance", channelNo: 2, status: "ONLINE" as const },
+      { id: "cam-3", name: "1-qavat koridor A", areaId: "area-corridor-1", channelNo: 3, status: "ONLINE" as const },
+      { id: "cam-4", name: "1-qavat koridor B", areaId: "area-corridor-1", channelNo: 4, status: "OFFLINE" as const },
+      { id: "cam-5", name: "2-qavat koridor", areaId: "area-corridor-2", channelNo: 5, status: "ONLINE" as const },
+      { id: "cam-6", name: "1-A sinf", areaId: "area-room-1a", channelNo: 6, status: "ONLINE" as const },
+      { id: "cam-7", name: "1-B sinf", areaId: "area-room-1b", channelNo: 7, status: "UNKNOWN" as const },
+      { id: "cam-8", name: "2-A sinf", areaId: "area-room-2a", channelNo: 8, status: "ONLINE" as const },
+      { id: "cam-9", name: "Hovli 1", areaId: "area-courtyard", channelNo: 9, status: "ONLINE" as const },
+      { id: "cam-10", name: "Lab 1", areaId: "area-lab", channelNo: 10, status: "ONLINE" as const },
+    ];
+
+    for (const cam of cameras) {
+      await prisma.camera.upsert({
+        where: { id: cam.id },
+        update: {
+          name: cam.name,
+          areaId: cam.areaId,
+          nvrId: baseNvr.id,
+          channelNo: cam.channelNo,
+          status: cam.status,
+          externalId: cam.id,
+          streamProfile: "main",
+          autoGenerateUrl: true,
+          isActive: true,
+        },
+        create: {
+          id: cam.id,
+          schoolId: baseSchool.id,
+          nvrId: baseNvr.id,
+          areaId: cam.areaId,
+          name: cam.name,
+          externalId: cam.id,
+          channelNo: cam.channelNo,
+          status: cam.status,
+          streamProfile: "main",
+          autoGenerateUrl: true,
+          isActive: true,
+        },
+      });
+    }
+
+    console.log("  ✅ Camera system seeded: 1 NVR, 8 areas, 10 cameras");
 
     const baseStudents = [
       {
@@ -544,6 +785,7 @@ const buildEventKey = (parts: string[]) =>
       ? await prisma.school.update({
           where: { id: existingSchool.id },
           data: {
+            schoolNumber,
             name: `Namangan ${schoolNumber}-maktab`,
             address: `Namangan shahri, ${schoolNumber}-maktab`,
             phone: `+998 69 221 00 ${schoolNumber.toString().padStart(2, '0')}`,
@@ -555,6 +797,7 @@ const buildEventKey = (parts: string[]) =>
         })
       : await prisma.school.create({
           data: {
+            schoolNumber,
             name: `Namangan ${schoolNumber}-maktab`,
             address: `Namangan shahri, ${schoolNumber}-maktab`,
             phone: `+998 69 221 00 ${schoolNumber.toString().padStart(2, '0')}`,
@@ -642,13 +885,13 @@ const buildEventKey = (parts: string[]) =>
     let studentCounter = 1;
     for (const cls of classRecords) {
       for (let i = 0; i < config.studentsPerClass; i++) {
-        const fullName = `Student ${schoolIndex}-${cls.name}-${studentCounter}`;
-        const { lastName, firstName } = splitName(fullName);
+        const gender: "MALE" | "FEMALE" = Math.random() > 0.5 ? "MALE" : "FEMALE";
+        const { firstName, lastName, fullName } = generateUzbekName(gender);
         studentBatch.push({
           lastName,
           firstName,
           name: fullName,
-          gender: Math.random() > 0.5 ? "MALE" : "FEMALE",
+          gender,
           deviceStudentId: `S${schoolIndex}C${cls.name}N${studentCounter}`,
           schoolId: school.id,
           classId: cls.id,

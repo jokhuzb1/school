@@ -10,6 +10,7 @@ datasource db {
 model School {
   id                  String   @id @default(uuid())
   name                String
+  schoolNumber        Int?     // Maktab raqami (tartiblash uchun)
   address             String?
   phone               String?
   email               String?
