@@ -120,3 +120,16 @@ ALTER TABLE "Camera" ADD CONSTRAINT "Camera_nvrId_fkey" FOREIGN KEY ("nvrId") RE
 
 -- AddForeignKey
 ALTER TABLE "Camera" ADD CONSTRAINT "Camera_areaId_fkey" FOREIGN KEY ("areaId") REFERENCES "CameraArea"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- Reordered from removed 20260131070223_add_nvr_cameras to avoid altering before table exists
+-- DropForeignKey
+ALTER TABLE "Camera" DROP CONSTRAINT "Camera_nvrId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "CameraArea" DROP CONSTRAINT "CameraArea_nvrId_fkey";
+
+-- AddForeignKey
+ALTER TABLE "CameraArea" ADD CONSTRAINT "CameraArea_nvrId_fkey" FOREIGN KEY ("nvrId") REFERENCES "Nvr"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Camera" ADD CONSTRAINT "Camera_nvrId_fkey" FOREIGN KEY ("nvrId") REFERENCES "Nvr"("id") ON DELETE SET NULL ON UPDATE CASCADE;
