@@ -362,16 +362,16 @@ const buildEventKey = (parts: string[]) =>
     console.log("Creating base seed data...");
 
     const existingBaseSchool = await prisma.school.findFirst({
-      where: { email: "school1@example.com" },
+      where: { email: "namangan1@maktab.uz" },
     });
     const baseSchool = existingBaseSchool
       ? await prisma.school.update({
           where: { id: existingBaseSchool.id },
           data: {
-            name: "School #1",
-            address: "123 Main St",
-            phone: "123456789",
-            email: "school1@example.com",
+            name: "Namangan 1-maktab",
+            address: "Namangan shahri",
+            phone: "+998 69 221 00 01",
+            email: "namangan1@maktab.uz",
             lateThresholdMinutes: config.lateThresholdMinutes,
             absenceCutoffMinutes: 180,
             timezone: "Asia/Tashkent",
@@ -379,10 +379,10 @@ const buildEventKey = (parts: string[]) =>
         })
       : await prisma.school.create({
           data: {
-            name: "School #1",
-            address: "123 Main St",
-            phone: "123456789",
-            email: "school1@example.com",
+            name: "Namangan 1-maktab",
+            address: "Namangan shahri",
+            phone: "+998 69 221 00 01",
+            email: "namangan1@maktab.uz",
             lateThresholdMinutes: config.lateThresholdMinutes,
             absenceCutoffMinutes: 180,
             timezone: "Asia/Tashkent",
@@ -536,7 +536,7 @@ const buildEventKey = (parts: string[]) =>
       `Creating school ${schoolNumber}/${config.schools + schoolIndexOffset}...`,
     );
 
-    const schoolEmail = `school${schoolNumber}@example.com`;
+    const schoolEmail = `namangan${schoolNumber}@maktab.uz`;
     const existingSchool = await prisma.school.findFirst({
       where: { email: schoolEmail },
     });
@@ -544,9 +544,9 @@ const buildEventKey = (parts: string[]) =>
       ? await prisma.school.update({
           where: { id: existingSchool.id },
           data: {
-            name: `School #${schoolNumber}`,
-            address: `${schoolNumber} Main St`,
-            phone: `100000${schoolNumber}`,
+            name: `Namangan ${schoolNumber}-maktab`,
+            address: `Namangan shahri, ${schoolNumber}-maktab`,
+            phone: `+998 69 221 00 ${schoolNumber.toString().padStart(2, '0')}`,
             email: schoolEmail,
             lateThresholdMinutes: config.lateThresholdMinutes,
             absenceCutoffMinutes: 180,
@@ -555,9 +555,9 @@ const buildEventKey = (parts: string[]) =>
         })
       : await prisma.school.create({
           data: {
-            name: `School #${schoolNumber}`,
-            address: `${schoolNumber} Main St`,
-            phone: `100000${schoolNumber}`,
+            name: `Namangan ${schoolNumber}-maktab`,
+            address: `Namangan shahri, ${schoolNumber}-maktab`,
+            phone: `+998 69 221 00 ${schoolNumber.toString().padStart(2, '0')}`,
             email: schoolEmail,
             lateThresholdMinutes: config.lateThresholdMinutes,
             absenceCutoffMinutes: 180,

@@ -538,7 +538,7 @@ export function StudentsPage() {
   };
 
   const sortableColumns = useMemo(
-    () => new Set(['studentName', 'className', 'deviceStudentId']),
+    () => new Set(['lastName', 'firstName', 'className', 'deviceStudentId']),
     [],
   );
 
@@ -566,12 +566,6 @@ export function StudentsPage() {
       width: 50,
     },
     {
-      header: "O'quvchi",
-      accessorKey: 'studentName',
-      sortable: true,
-      width: '25%',
-    },
-    {
       header: 'Rasm',
       cell: (row) => {
         const employeeNo = (row.deviceStudentId || '').trim();
@@ -580,19 +574,46 @@ export function StudentsPage() {
         if (!url) return <span className="text-secondary">-</span>;
         return <img src={url} alt="photo" className="student-avatar" />;
       },
+      width: '60px',
+    },
+    {
+      header: 'Familiya',
+      accessorKey: 'lastName',
+      sortable: true,
+      width: '15%',
+    },
+    {
+      header: 'Ism',
+      accessorKey: 'firstName',
+      sortable: true,
+      width: '15%',
+    },
+    {
+      header: 'Otasi',
+      accessorKey: 'fatherName',
+      cell: (row) => row.fatherName || <span className="text-secondary">-</span>,
+      width: '12%',
+    },
+    {
+      header: 'Jinsi',
+      accessorKey: 'gender',
+      cell: (row) => {
+        if (!row.gender) return <span className="text-secondary">-</span>;
+        return row.gender === 'MALE' ? 'Erkak' : 'Ayol';
+      },
       width: '80px',
     },
     {
       header: 'Sinf',
       accessorKey: 'className',
       sortable: true,
-      width: '12%',
+      width: '10%',
     },
     {
       header: 'Device ID',
       accessorKey: 'deviceStudentId',
       sortable: true,
-      width: '12%',
+      width: '10%',
     },
     {
       header: 'Diagnostika',
@@ -609,7 +630,7 @@ export function StudentsPage() {
           summarizeStatuses={summarizeStatuses}
         />
       ),
-      width: '20%',
+      width: '15%',
     },
     {
       header: 'Amallar',
@@ -634,7 +655,7 @@ export function StudentsPage() {
       ),
       width: '100px',
     }
-  ], [backendDevices, deviceOnlyFaceByEmployeeNo, liveStateByStudent, page]);
+  ], [backendDevices, deviceOnlyFaceByEmployeeNo, liveStateByStudent, page, buildPhotoUrl]);
 
   return (
     <div className="page">

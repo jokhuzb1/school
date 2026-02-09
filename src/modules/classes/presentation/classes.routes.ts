@@ -34,10 +34,14 @@ export default async function (fastify: FastifyInstance) {
         const [school, classes] = await Promise.all([
           prisma.school.findUnique({ where: { id: schoolId }, select: { timezone: true } }),
           prisma.class.findMany({
-          where,
-          include: {
-            _count: { select: { students: true } },
-          },
+            where,
+            include: {
+              _count: { select: { students: true } },
+            },
+            orderBy: [
+              { gradeLevel: 'asc' },
+              { name: 'asc' },
+            ],
           }),
         ]);
 

@@ -41,6 +41,7 @@ export default async function (fastify: FastifyInstance) {
         include: {
           _count: { select: { students: true, classes: true, devices: true } },
         },
+        orderBy: { name: 'asc' },
       });
 
       const now = new Date();
@@ -141,6 +142,11 @@ export default async function (fastify: FastifyInstance) {
           };
         }),
       );
+
+      // Natural sort - raqamlarni to'g'ri tartiblash (1, 2, 3... 10, 11)
+      schoolsWithStats.sort((a, b) => {
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      });
 
       return schoolsWithStats;
     },
