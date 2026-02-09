@@ -17,7 +17,7 @@ services:
     build: .
     environment:
       NODE_ENV: production
-      PORT: 5000
+      PORT: ${PORT}
       DATABASE_URL: postgresql://postgres:postgres@db:5432/attendance_db
       JWT_SECRET: ${JWT_SECRET}
       CREDENTIALS_SECRET: ${CREDENTIALS_SECRET}
