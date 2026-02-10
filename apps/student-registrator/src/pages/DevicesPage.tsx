@@ -866,7 +866,7 @@ export function DevicesPage() {
                           }}
                           title="Clone (qurilmadan qurilmaga)"
                         >
-                          <Icons.Link />
+                          <Icons.Copy />
                         </button>
                         <button
                           className="btn-icon btn-danger"
