@@ -7,7 +7,9 @@
     "dev": "vite",
     "dev:desktop": "tauri dev",
     "build": "tsc -b && vite build",
-    "build:desktop": "tauri build",
+    "build:desktop": "tauri build --ci",
+    "build:desktop:msi": "tauri build --ci -b msi",
+    "build:desktop:exe": "tauri build --ci -b none",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.app.json --noEmit"

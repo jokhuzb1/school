@@ -17,6 +17,10 @@
       }
     },
     "bundle": {
+      "active": true,
+      "icon": [
+        "icons/icon.ico"
+      ],
       "identifier": "com.school.studentregistrator"
     },
     "windows": [

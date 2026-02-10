@@ -308,6 +308,7 @@ export interface StudentDiagnosticsRow {
   firstName?: string;
   lastName?: string;
   fatherName?: string | null;
+  gender?: 'MALE' | 'FEMALE' | null;
   classId?: string | null;
   className?: string | null;
   deviceStudentId?: string | null;
