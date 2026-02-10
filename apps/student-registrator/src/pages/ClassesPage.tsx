@@ -56,6 +56,22 @@ export function ClassesPage() {
     loadClasses();
   }, [selectedSchool, addToast]);
 
+  const handleRefresh = async () => {
+    if (!selectedSchool) return;
+    try {
+      const data = await fetchClasses(selectedSchool);
+      const sorted = [...data].sort((a, b) => {
+        if (a.gradeLevel !== b.gradeLevel) return a.gradeLevel - b.gradeLevel;
+        return a.name.localeCompare(b.name);
+      });
+      setClasses(sorted);
+      addToast('Sinflar yangilandi', 'success');
+    } catch (err) {
+      console.error('Failed to refresh classes:', err);
+      addToast('Sinflarni yangilashda xato', 'error');
+    }
+  };
+
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClassName.trim()) {
@@ -99,11 +115,19 @@ export function ClassesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <div>
+        <div className="header-main">
           <h1 className="page-title">Sinflar</h1>
           <p className="page-description">Maktab sinflarini boshqarish</p>
         </div>
         <div className="page-actions">
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={handleRefresh}
+            title="Yangilash"
+          >
+            <Icons.Refresh />
+          </button>
           <button
             type="button"
             className="button button-primary"
