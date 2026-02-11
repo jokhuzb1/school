@@ -12,7 +12,7 @@ import Classes from "./pages/Classes";
 import ClassDetail from "./pages/ClassDetail";
 import Devices from "./pages/Devices";
 import Holidays from "./pages/Holidays";
-import Settings from "./pages/Settings";
+// import Settings from "./pages/Settings";
 import Schools from "./pages/Schools";
 import Users from "./pages/Users";
 import { UiGallery } from "./shared/ui";

@@ -5,7 +5,7 @@ import {
   BookOutlined,
   CalendarOutlined,
   DashboardOutlined,
-  SettingOutlined,
+//   SettingOutlined,
   TeamOutlined,
   VideoCameraOutlined,
   LeftOutlined,
