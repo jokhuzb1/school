@@ -10,6 +10,7 @@ prisma/ - schema, seed script, and migration history for the Postgres/Prisma dat
 scripts/ - command-line helpers (setup-mediamtx, Excel helpers, id fixes) used during onboarding or maintenance.
 tools/mediamtx/ - MediaMTX YAML config and Windows batch helpers for starting/stopping the relay per README guidance.
 student-register/ - standalone fullstack helper app (server + web) for enrolling students to Hikvision devices on the LAN.
+apps/student-registrator/ - Tauri + Vite desktop app for student registration; `src-tauri/` contains the native shell and `package.json` exposes `build:desktop:*` installer scripts.
 .env & .env.example - backend runtime secrets (JWT, CORS, SSE token TTL, Redis URL, MediaMTX flags) plus stored webhook credentials.
 frontend/.env - UI feature flags (base URLs, API host) referenced by Vite.
 README.md & realtime_school_monitoring_saas.md - product overview, setup steps, and integration notes (webhooks, NVR sync, MediaMTX deployment).

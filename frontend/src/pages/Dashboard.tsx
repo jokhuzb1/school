@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Row,
   Col,
@@ -91,6 +92,7 @@ const PIE_COLORS: Record<string, string> = {
 const AUTO_REFRESH_MS = 60000;
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { schoolId } = useSchool();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
@@ -101,6 +103,16 @@ const Dashboard: React.FC = () => {
     dayjs(),
   ]);
   const [historyEvents, setHistoryEvents] = useState<AttendanceEvent[]>([]);
+
+  const navigateToStudent = useCallback(
+    (event: AttendanceEvent) => {
+      if (!schoolId) return;
+      const studentId = event.student?.id || event.studentId;
+      if (!studentId) return;
+      navigate(`/schools/${schoolId}/students/${studentId}`);
+    },
+    [navigate, schoolId],
+  );
 
   const getEventStudentLabel = (event: AttendanceEvent) => {
     const raw: any = event.rawPayload || {};
@@ -717,10 +729,26 @@ const Dashboard: React.FC = () => {
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {events.slice(0, 8).map((event) => {
                   const eventTag = EVENT_TYPE_TAG[event.eventType];
+                  const studentId = event.student?.id || event.studentId;
+                  const isClickable = Boolean(studentId);
 
                   return (
                     <div
                       key={event.id}
+                      role={isClickable ? "button" : undefined}
+                      tabIndex={isClickable ? 0 : undefined}
+                      onClick={() => {
+                        if (isClickable) {
+                          navigateToStudent(event);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (!isClickable) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          navigateToStudent(event);
+                        }
+                      }}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -729,6 +757,7 @@ const Dashboard: React.FC = () => {
                         background: EVENT_TYPE_BG[event.eventType],
                         borderRadius: 4,
                         borderLeft: `3px solid ${EVENT_TYPE_COLOR[event.eventType]}`,
+                        cursor: isClickable ? "pointer" : "default",
                       }}
                     >
                       <Tag
@@ -998,8 +1027,26 @@ const Dashboard: React.FC = () => {
             dataSource={historyEvents.slice(0, 200)}
             renderItem={(event) => {
               const eventTag = EVENT_TYPE_TAG[event.eventType];
+              const studentId = event.student?.id || event.studentId;
+              const isClickable = Boolean(studentId);
               return (
-                <List.Item>
+                <List.Item
+                  role={isClickable ? "button" : undefined}
+                  tabIndex={isClickable ? 0 : undefined}
+                  onClick={() => {
+                    if (isClickable) {
+                      navigateToStudent(event);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (!isClickable) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigateToStudent(event);
+                    }
+                  }}
+                  style={{ cursor: isClickable ? "pointer" : "default" }}
+                >
                   <Space size={8}>
                     <Tag color={eventTag.color} style={{ margin: 0 }}>
                       {eventTag.text}
