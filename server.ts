@@ -77,7 +77,12 @@ server.register(require("@fastify/cors"), {
     return cb(null, CORS_ORIGINS.includes(origin));
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-  allowedHeaders: ["Content-Type", "Authorization", "Accept"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Accept",
+    "x-client-contract-version",
+  ],
   exposedHeaders: ["Content-Disposition"],
   credentials: true,
   preflight: true,

@@ -11,6 +11,7 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
+    "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --name init",
     "db:diff": "powershell -ExecutionPolicy Bypass -File scripts/migrate-diff.ps1",
     "db:deploy": "prisma migrate deploy",

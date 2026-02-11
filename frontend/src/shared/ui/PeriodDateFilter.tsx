@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { DatePicker } from "antd";
+import { DatePicker, Segmented } from "antd";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import type { PeriodType } from "../../types";
@@ -61,33 +61,48 @@ export function PeriodDateFilter({
     [baseDate],
   );
 
+  const segmentedValue = value.period === "custom" ? undefined : value.period;
+
   return (
-    <RangePicker
-      size={size}
-      value={pickerValue}
-      presets={presets}
-      format="DD.MM.YYYY"
-      style={style}
-      onChange={(dates) => {
-        if (!dates || !dates[0] || !dates[1]) {
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <Segmented
+        size={size}
+        value={segmentedValue}
+        options={PRESET_PERIOD_OPTIONS}
+        onChange={(next) => {
           onChange({
-            period: defaultPeriodOnClear,
+            period: next as PeriodType,
             customRange: null,
           });
-          return;
-        }
+        }}
+      />
+      <RangePicker
+        size={size}
+        value={pickerValue}
+        presets={presets}
+        format="DD.MM.YYYY"
+        style={style}
+        onChange={(dates) => {
+          if (!dates || !dates[0] || !dates[1]) {
+            onChange({
+              period: defaultPeriodOnClear,
+              customRange: null,
+            });
+            return;
+          }
 
-        const normalized = normalizeDayRange([dates[0], dates[1]]);
-        const detected = detectPeriodFromRange(normalized, baseDate);
+          const normalized = normalizeDayRange([dates[0], dates[1]]);
+          const detected = detectPeriodFromRange(normalized, baseDate);
 
-        if (detected === "custom") {
-          onChange({ period: "custom", customRange: normalized });
-          return;
-        }
+          if (detected === "custom") {
+            onChange({ period: "custom", customRange: normalized });
+            return;
+          }
 
-        onChange({ period: detected, customRange: null });
-      }}
-    />
+          onChange({ period: detected, customRange: null });
+        }}
+      />
+    </div>
   );
 }
 
