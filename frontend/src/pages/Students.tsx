@@ -492,13 +492,18 @@ const Students: React.FC = () => {
               okText="Ha"
               cancelText="Yo'q"
             >
-              <Button
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                aria-label="O'quvchini o'chirish"
-                onClick={(e) => e.stopPropagation()}
-              />
+              <div 
+                onClick={(e) => e.stopPropagation()} 
+                onKeyDown={(e) => e.stopPropagation()}
+                style={{ display: 'inline-block' }}
+              >
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  aria-label="O'quvchini o'chirish"
+                />
+              </div>
             </Popconfirm>
           )}
         </Space>
