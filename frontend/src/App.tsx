@@ -71,14 +71,14 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                <Route
+                {/* <Route
                   path="settings"
                   element={
                     <ProtectedRoute requiredRoles={["SUPER_ADMIN"]}>
                       <Settings />
                     </ProtectedRoute>
                   }
-                />
+                /> */}
 
                 {/* School-specific routes */}
                 <Route
@@ -167,14 +167,14 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-              <Route
+              {/* <Route
                 path="schools/:schoolId/settings"
                 element={
                   <ProtectedRoute requiredRoles={["SCHOOL_ADMIN"]}>
                     <Settings />
                   </ProtectedRoute>
                 }
-              />
+              /> */}
 
                 <Route
                   path="schools/:schoolId/students/:id"
