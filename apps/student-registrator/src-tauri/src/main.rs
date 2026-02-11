@@ -9,7 +9,7 @@ mod types;
 use commands::*;
 
 fn main() {
-    tauri::Builder::default()
+    if let Err(err) = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             // Device management
             get_devices,
@@ -40,5 +40,7 @@ fn main() {
             clone_device_to_device,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    {
+        eprintln!("error while running tauri application: {}", err);
+    }
 }

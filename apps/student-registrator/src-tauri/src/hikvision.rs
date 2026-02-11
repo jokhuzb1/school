@@ -37,12 +37,16 @@ pub struct HikvisionClient {
 
 impl HikvisionClient {
     pub fn new(device: DeviceConfig) -> Self {
+        let client = match Client::builder()
+            .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
+            .build()
+        {
+            Ok(client) => client,
+            Err(_) => Client::new(),
+        };
         Self {
             device,
-            client: Client::builder()
-                .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
-                .build()
-                .expect("reqwest client build"),
+            client,
         }
     }
 
@@ -589,12 +593,23 @@ impl HikvisionClient {
         }
 
         // Build multipart form
+        let face_image_part = match reqwest::multipart::Part::bytes(image_bytes)
+            .file_name("face.jpg")
+            .mime_str("image/jpeg")
+        {
+            Ok(part) => part,
+            Err(e) => {
+                return DeviceActionResult {
+                    ok: false,
+                    status_code: None,
+                    status_string: Some("UploadFailed".to_string()),
+                    error_msg: Some(e.to_string()),
+                };
+            }
+        };
         let form = reqwest::multipart::Form::new()
             .text("FaceDataRecord", face_record.to_string())
-            .part("FaceImage", reqwest::multipart::Part::bytes(image_bytes)
-                .file_name("face.jpg")
-                .mime_str("image/jpeg")
-                .unwrap());
+            .part("FaceImage", face_image_part);
 
         match self
             .send_with_auth(

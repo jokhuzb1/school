@@ -25,7 +25,7 @@ Out of scope:
 
 ### WS1 - Critical Blockers (P0)
 - [x] Lint configni to'g'rilash: `src-tauri/target/**` va generated fayllarni ignore qilish
-- [ ] Rust panic risklarini yopish: `expect/unwrap` o'rniga safe error path
+- [x] Rust panic risklarini yopish: `expect/unwrap` o'rniga safe error path
 - [x] Invalid table markupni tuzatish (`<tr>` ichidagi modal `<div>` anti-pattern)
 - [x] `src/index.css` dublikat/corrupt bloklarni tozalash
 - [x] Production flowdagi ortiqcha `console.*` ni debug gate bilan boshqarish
@@ -35,7 +35,7 @@ Out of scope:
 - [ ] Auth token storage strategiyasini qayta ko'rib chiqish (XSS-risk kamaytirish)
 - [ ] Local device credentials saqlashni himoyalash (at-rest protection/encryption policy)
 - [x] Sensitive data redaction qatlamini joriy qilish (password/token/secret/biometric)
-- [ ] Log va error payloadlarda maxfiy ma'lumot sizib chiqmasligini test bilan kafolatlash
+- [x] Log va error payloadlarda maxfiy ma'lumot sizib chiqmasligini test bilan kafolatlash
 - [ ] Security checklist va sign-off hujjatlarini yangilash
 
 ### WS3 - SOLID/SRP Architecture Refactor
