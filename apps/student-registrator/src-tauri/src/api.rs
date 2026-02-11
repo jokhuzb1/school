@@ -26,6 +26,7 @@ impl ApiClient {
         builder
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn start_provisioning(
         &self,
         school_id: &str,
@@ -83,6 +84,7 @@ impl ApiClient {
         serde_json::from_str(&text).map_err(|e| e.to_string())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn report_device_result(
         &self,
         provisioning_id: &str,

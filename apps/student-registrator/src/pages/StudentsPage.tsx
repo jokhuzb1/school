@@ -516,7 +516,7 @@ export function StudentsPage() {
             message: result.message,
             checkedAt: result.checkedAt,
           };
-        } catch (err) {
+        } catch {
           return { backendDeviceId: backendDevice.id, status: 'ERROR' as LiveStatus };
         }
       }),

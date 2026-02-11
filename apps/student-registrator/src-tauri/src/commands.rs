@@ -96,6 +96,14 @@ fn device_match_label(device: &DeviceConfig) -> String {
     format!("{}:{}", device.host, device.port)
 }
 
+type SuccessfulDeviceEntry = (
+    DeviceConfig,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+);
+
 // ============ Device Management Commands ============
 
 #[tauri::command]
@@ -461,7 +469,7 @@ fn extract_xml_tag_values(text: &str) -> Vec<String> {
             .unwrap_or("");
         let base_name = raw_name
             .split(':')
-            .last()
+            .next_back()
             .unwrap_or(raw_name)
             .to_lowercase();
         if !tag_names.iter().any(|name| *name == base_name) {
@@ -482,7 +490,7 @@ fn extract_xml_tag_values(text: &str) -> Vec<String> {
                 .next()
                 .unwrap_or("")
                 .split(':')
-                .last()
+                .next_back()
                 .unwrap_or("")
                 .to_lowercase();
             if close_base == base_name {
@@ -541,7 +549,6 @@ fn pick_primary_webhook_url(urls: &[String], direction: &str) -> Option<String> 
         })
         .cloned()
         .or_else(|| urls.iter().find(|u| is_valid_webhook_candidate(u)).cloned())
-        .or_else(|| None)
 }
 
 fn replace_xml_url_tags(xml: &str, target_url: &str) -> (String, usize) {
@@ -552,8 +559,7 @@ fn replace_xml_url_tags(xml: &str, target_url: &str) -> (String, usize) {
         let open = format!("<{}>", tag);
         let close = format!("</{}>", tag);
         let mut start = 0usize;
-        loop {
-            let Some(open_pos_rel) = out[start..].find(&open) else { break };
+        while let Some(open_pos_rel) = out[start..].find(&open) {
             let open_pos = start + open_pos_rel;
             let value_start = open_pos + open.len();
             let Some(close_pos_rel) = out[value_start..].find(&close) else { break };
@@ -953,6 +959,7 @@ pub async fn check_student_on_device(device_id: String, employee_no: String) -> 
 // ============ Student Registration Commands ============
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn register_student(
     name: String,
     first_name: Option<String>,
@@ -1053,13 +1060,7 @@ pub async fn register_student(
     );
 
     let mut results = Vec::new();
-    let mut successful_devices: Vec<(
-        DeviceConfig,
-        Option<String>,
-        Option<String>,
-        String,
-        String,
-    )> = Vec::new();
+    let mut successful_devices: Vec<SuccessfulDeviceEntry> = Vec::new();
     let mut abort_error: Option<String> = None;
 
     let mut devices_changed = false;
@@ -1080,7 +1081,7 @@ pub async fn register_student(
             None
         };
 
-        let selected_by_backend_id = selected_set.map_or(true, |ids| {
+        let selected_by_backend_id = selected_set.is_none_or(|ids| {
             device
                 .backend_id
                 .as_ref()
@@ -1846,7 +1847,7 @@ pub async fn clone_students_to_device(
     let school_id = school_id.filter(|v| !v.trim().is_empty())
         .ok_or("schoolId is required")?;
     let token = backend_token.filter(|v| !v.trim().is_empty());
-    let _per_page = page_size.unwrap_or(50).max(10).min(200);
+    let _per_page = page_size.unwrap_or(50).clamp(10, 200);
     let limit = max_students.unwrap_or(10000);
 
     let local_devices = load_devices();

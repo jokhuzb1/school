@@ -89,7 +89,7 @@ export function useStudentEdit({
       } catch (syncErr) {
         console.error('Device sync error:', syncErr);
       }
-    } catch (err) {
+    } catch {
       addToast('Yangilashda xato', 'error');
     } finally {
       setSavingEdit(false);

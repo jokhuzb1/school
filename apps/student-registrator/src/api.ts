@@ -91,7 +91,7 @@ export interface ProvisioningLogEntry {
   stage: string;
   status?: string | null;
   message?: string | null;
-  payload?: Record<string, any> | null;
+  payload?: Record<string, unknown> | null;
   actorId?: string | null;
   actorRole?: string | null;
   actorName?: string | null;
@@ -929,20 +929,20 @@ export async function probeDeviceConnection(params: {
   });
 }
 
-export async function getDeviceCapabilities(deviceId: string): Promise<any> {
-  return invoke<any>('get_device_capabilities', { deviceId });
+export async function getDeviceCapabilities(deviceId: string): Promise<Record<string, unknown>> {
+  return invoke<Record<string, unknown>>('get_device_capabilities', { deviceId });
 }
 
-export async function getDeviceConfiguration(deviceId: string): Promise<any> {
-  return invoke<any>('get_device_configuration', { deviceId });
+export async function getDeviceConfiguration(deviceId: string): Promise<Record<string, unknown>> {
+  return invoke<Record<string, unknown>>('get_device_configuration', { deviceId });
 }
 
 export async function updateDeviceConfiguration(params: {
   deviceId: string;
   configType: 'time' | 'ntpServers' | 'networkInterfaces';
   payload: Record<string, unknown>;
-}): Promise<any> {
-  return invoke<any>('update_device_configuration', {
+}): Promise<Record<string, unknown>> {
+  return invoke<Record<string, unknown>>('update_device_configuration', {
     deviceId: params.deviceId,
     configType: params.configType,
     payload: params.payload,
@@ -1583,8 +1583,8 @@ export async function base64ToResizedBase64(
     1,
     maxDimension / Math.max(img.naturalWidth || 1, img.naturalHeight || 1),
   );
-  let targetW = Math.max(1, Math.round(img.naturalWidth * scale));
-  let targetH = Math.max(1, Math.round(img.naturalHeight * scale));
+  const targetW = Math.max(1, Math.round(img.naturalWidth * scale));
+  const targetH = Math.max(1, Math.round(img.naturalHeight * scale));
 
   const canvas = document.createElement("canvas");
   canvas.width = targetW;

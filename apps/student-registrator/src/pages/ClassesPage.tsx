@@ -95,8 +95,9 @@ export function ClassesPage() {
         return a.name.localeCompare(b.name);
       });
       setClasses(sorted);
-    } catch (err: any) {
-      addToast(err.message || 'Sinf yaratishda xato', 'error');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Sinf yaratishda xato';
+      addToast(message, 'error');
     } finally {
       setLoading(false);
     }

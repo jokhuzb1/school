@@ -311,7 +311,7 @@ export function useStudentTable(options?: {
         };
 
         let reason = "";
-        let deviceLabel = firstFailure.deviceName || firstFailure.deviceId;
+        const deviceLabel = firstFailure.deviceName || firstFailure.deviceId;
         if (!firstFailure.connection.ok) {
           reason = pickReason(undefined, firstFailure.connection.message);
         } else if (firstFailure.userCreate && !firstFailure.userCreate.ok) {

@@ -1,7 +1,12 @@
-import ExcelJS from "exceljs";
 import boySampleImg from "../assets/boy_sample.png";
 import girlSampleImg from "../assets/girl_sample.png";
 import type { StudentRow } from '../types';
+
+type ExcelJsModule = typeof import("exceljs");
+
+async function getExcelJs(): Promise<ExcelJsModule> {
+  return import("exceljs");
+}
 
 function normalizeHeader(value: string): string {
   return value
@@ -29,6 +34,7 @@ function normalizeGenderValue(value: string): "male" | "female" | "unknown" {
 
 // Excel parse qilish (App.tsx dan ko'chirilgan)
 export async function parseExcelFile(file: File): Promise<Omit<StudentRow, 'id' | 'source' | 'status'>[]> {
+  const ExcelJS = await getExcelJs();
   const buffer = await file.arrayBuffer();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
@@ -147,7 +153,7 @@ export async function parseExcelFile(file: File): Promise<Omit<StudentRow, 'id' 
       }
       
       const fullName = `${lastName} ${firstName}`.trim();
-      if (fullName && !fullName.startsWith("📚") && !fullName.startsWith("📖") && !fullName.startsWith("💡")) {
+      if (fullName) {
         console.log(`[Parse] Row ${rowNumber}: name="${fullName}", gender="${gender}", class="${sheetName}"`);
         allRows.push({
           firstName,
@@ -167,6 +173,7 @@ export async function parseExcelFile(file: File): Promise<Omit<StudentRow, 'id' 
 }
 
 export async function downloadStudentsTemplate(classNames: string[]): Promise<void> {
+  const ExcelJS = await getExcelJs();
   // Remove duplicates and empty values
   const cleanedNames = [...new Set(classNames.map((name) => name.trim()).filter(Boolean))];
   if (cleanedNames.length === 0) {
@@ -324,4 +331,3 @@ export async function downloadStudentsTemplate(classNames: string[]): Promise<vo
   a.click();
   URL.revokeObjectURL(url);
 }
-

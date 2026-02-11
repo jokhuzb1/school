@@ -356,7 +356,7 @@ export function DevicesPage() {
       setEditingLocalId(null);
       setIsModalOpen(false);
       setIsCredentialsModalOpen(false);
-    } catch (err) {
+    } catch {
       addToast('Xatolik yuz berdi', 'error');
     } finally {
       setLoading(false);
@@ -571,7 +571,7 @@ export function DevicesPage() {
     try {
       await navigator.clipboard.writeText(value);
       addToast(`${label} nusxalandi`, 'success');
-    } catch (err) {
+    } catch {
       addToast('Nusxalashda xato', 'error');
     }
   };

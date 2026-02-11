@@ -130,7 +130,7 @@ export function AddStudentsPage() {
           try {
             const result = await testDeviceConnection(localDevice.id);
             return { backendId: device.id, status: (result.ok ? 'online' : 'offline') as DeviceStatus };
-          } catch (err) {
+          } catch {
             return { backendId: device.id, status: 'offline' as DeviceStatus };
           }
         }),
@@ -281,7 +281,7 @@ export function AddStudentsPage() {
       }
       addToast(`${successCount} ta o'quvchi saqlandi`, 'success');
       setIsTargetSaveModalOpen(false);
-    } catch (err) {
+    } catch {
       addToast('Ba\'zi o\'quvchilarni saqlashda xato', 'error');
     }
   };
