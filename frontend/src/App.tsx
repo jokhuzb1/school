@@ -12,7 +12,7 @@ import Classes from "./pages/Classes";
 import ClassDetail from "./pages/ClassDetail";
 import Devices from "./pages/Devices";
 import Holidays from "./pages/Holidays";
-import Settings from "./pages/Settings";
+// import Settings from "./pages/Settings";
 import Schools from "./pages/Schools";
 import Users from "./pages/Users";
 import { UiGallery } from "./shared/ui";
@@ -71,14 +71,14 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                <Route
+                {/* <Route
                   path="settings"
                   element={
                     <ProtectedRoute requiredRoles={["SUPER_ADMIN"]}>
                       <Settings />
                     </ProtectedRoute>
                   }
-                />
+                /> */}
 
                 {/* School-specific routes */}
                 <Route
@@ -167,14 +167,14 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-              <Route
+              {/* <Route
                 path="schools/:schoolId/settings"
                 element={
                   <ProtectedRoute requiredRoles={["SCHOOL_ADMIN"]}>
                     <Settings />
                   </ProtectedRoute>
                 }
-              />
+              /> */}
 
                 <Route
                   path="schools/:schoolId/students/:id"

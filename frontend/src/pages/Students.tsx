@@ -30,6 +30,7 @@ import {
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useSchool } from "../hooks/useSchool";
+import { useAuth } from "../hooks/useAuth";
 import { studentsService } from "../services/students";
 import type { StudentsResponse } from "../types";
 import { classesService } from "../services/classes";
@@ -56,6 +57,7 @@ const AUTO_REFRESH_MS = 60000;
 
 const Students: React.FC = () => {
   const { schoolId } = useSchool();
+  const { user } = useAuth();
   const { setRefresh, setLastUpdated } = useHeaderMeta();
   const { message } = App.useApp();
   const navigate = useNavigate();
@@ -192,6 +194,9 @@ const Students: React.FC = () => {
   }, [responseData, students, total]);
 
   const isSingleDay = responseData?.isSingleDay ?? true;
+  const canCreateStudent =
+    user?.role === "SCHOOL_ADMIN" || user?.role === "TEACHER";
+  const canEditOrDeleteStudent = user?.role === "SCHOOL_ADMIN";
 
   const handleAdd = () => {
     setEditingId(null);
@@ -206,8 +211,16 @@ const Students: React.FC = () => {
   };
 
   const handleSubmit = async (values: any) => {
+    if (!canCreateStudent) {
+      message.error("Bu amal uchun ruxsat yo'q");
+      return;
+    }
     try {
       if (editingId) {
+        if (!canEditOrDeleteStudent) {
+          message.error("Bu amal uchun ruxsat yo'q");
+          return;
+        }
         await studentsService.update(editingId, values);
         message.success("O'quvchi yangilandi");
       } else {
@@ -452,38 +465,47 @@ const Students: React.FC = () => {
           >
             Ko'rish
           </Button>
-          <Button
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEdit(record);
-            }}
-          >
-            Tahrir
-          </Button>
-          <Popconfirm
-            title="O'quvchini o'chirish?"
-            description="Bu o'quvchining barcha ma'lumotlari o'chiriladi."
-            onConfirm={async () => {
-              try {
-                await studentsService.delete(record.id);
-                message.success("O'quvchi o'chirildi");
-                fetchStudents();
-              } catch (err) {
-                message.error("O'chirishda xatolik");
-              }
-            }}
-            okText="Ha"
-            cancelText="Yo'q"
-          >
+          {canEditOrDeleteStudent && (
             <Button
               size="small"
-              danger
-              icon={<DeleteOutlined />}
-              aria-label="O'quvchini o'chirish"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </Popconfirm>
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEdit(record);
+              }}
+            >
+              Tahrir
+            </Button>
+          )}
+          {canEditOrDeleteStudent && (
+            <Popconfirm
+              title="O'quvchini o'chirish?"
+              description="Bu o'quvchining barcha ma'lumotlari o'chiriladi."
+              onConfirm={async () => {
+                try {
+                  await studentsService.delete(record.id);
+                  message.success("O'quvchi o'chirildi");
+                  fetchStudents();
+                } catch (err) {
+                  message.error("O'chirishda xatolik");
+                }
+              }}
+              okText="Ha"
+              cancelText="Yo'q"
+            >
+              <div 
+                onClick={(e) => e.stopPropagation()} 
+                onKeyDown={(e) => e.stopPropagation()}
+                style={{ display: 'inline-block' }}
+              >
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  aria-label="O'quvchini o'chirish"
+                />
+              </div>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -590,14 +612,16 @@ const Students: React.FC = () => {
           size="small"
           options={classes.map((c) => ({ label: c.name, value: c.id }))}
         />
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          size="small"
-          onClick={handleAdd}
-        >
-          Qo'shish
-        </Button>
+        {canCreateStudent && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            size="small"
+            onClick={handleAdd}
+          >
+            Qo'shish
+          </Button>
+        )}
         <div style={{ display: "inline-block" }}>
           <input
             type="file"
@@ -660,61 +684,63 @@ const Students: React.FC = () => {
         })}
       />
 
-      <Modal
-        title={editingId ? "O'quvchini tahrirlash" : "Yangi o'quvchi"}
-        open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        okText="Saqlash"
-        cancelText="Bekor"
-      >
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
-          <Form.Item name="deviceStudentId" label="Qurilma ID (qurilmadagi)">
-            <Input placeholder="Student ID" />
-          </Form.Item>
-          <Form.Item
-            name="lastName"
-            label="Familiya"
-            rules={[{ required: true, message: "Familiyani kiriting" }]}
-          >
-            <Input placeholder="Aliyev" />
-          </Form.Item>
-          <Form.Item
-            name="firstName"
-            label="Ism"
-            rules={[{ required: true, message: "Ismni kiriting" }]}
-          >
-            <Input placeholder="Ali" />
-          </Form.Item>
-          <Form.Item name="fatherName" label="Otasining ismi">
-            <Input placeholder="Vali o'g'li" />
-          </Form.Item>
-          <Form.Item
-            name="gender"
-            label="Jinsi"
-            rules={[{ required: true, message: "Jinsini tanlang" }]}
-            initialValue="MALE"
-          >
-            <Select placeholder="Jinsini tanlang">
-              <Select.Option value="MALE">Erkak</Select.Option>
-              <Select.Option value="FEMALE">Ayol</Select.Option>
-            </Select>
-          </Form.Item>
-          <Form.Item
-            name="classId"
-            label="Sinf"
-            rules={[{ required: true, message: "Sinfni tanlang" }]}
-          >
-            <Select
-              placeholder="Sinfni tanlang"
-              options={classes.map((c) => ({ label: c.name, value: c.id }))}
-            />
-          </Form.Item>
-          <Form.Item name="parentPhone" label="Telefon raqami">
-            <Input placeholder="+998 XX XXX XX XX" />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {(canCreateStudent || canEditOrDeleteStudent) && (
+        <Modal
+          title={editingId ? "O'quvchini tahrirlash" : "Yangi o'quvchi"}
+          open={modalOpen}
+          onCancel={() => setModalOpen(false)}
+          onOk={() => form.submit()}
+          okText="Saqlash"
+          cancelText="Bekor"
+        >
+          <Form form={form} layout="vertical" onFinish={handleSubmit}>
+            <Form.Item name="deviceStudentId" label="Qurilma ID (qurilmadagi)">
+              <Input placeholder="Student ID" />
+            </Form.Item>
+            <Form.Item
+              name="lastName"
+              label="Familiya"
+              rules={[{ required: true, message: "Familiyani kiriting" }]}
+            >
+              <Input placeholder="Aliyev" />
+            </Form.Item>
+            <Form.Item
+              name="firstName"
+              label="Ism"
+              rules={[{ required: true, message: "Ismni kiriting" }]}
+            >
+              <Input placeholder="Ali" />
+            </Form.Item>
+            <Form.Item name="fatherName" label="Otasining ismi">
+              <Input placeholder="Vali o'g'li" />
+            </Form.Item>
+            <Form.Item
+              name="gender"
+              label="Jinsi"
+              rules={[{ required: true, message: "Jinsini tanlang" }]}
+              initialValue="MALE"
+            >
+              <Select placeholder="Jinsini tanlang">
+                <Select.Option value="MALE">Erkak</Select.Option>
+                <Select.Option value="FEMALE">Ayol</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item
+              name="classId"
+              label="Sinf"
+              rules={[{ required: true, message: "Sinfni tanlang" }]}
+            >
+              <Select
+                placeholder="Sinfni tanlang"
+                options={classes.map((c) => ({ label: c.name, value: c.id }))}
+              />
+            </Form.Item>
+            <Form.Item name="parentPhone" label="Telefon raqami">
+              <Input placeholder="+998 XX XXX XX XX" />
+            </Form.Item>
+          </Form>
+        </Modal>
+      )}
 
       <Modal
         title="Import xatolari"

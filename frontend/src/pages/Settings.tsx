@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Form, InputNumber, Button, Spin, App, Space } from 'antd';
+import { Card, Form, InputNumber, Button, Spin, App, Space, Typography } from 'antd';
 import { 
     SettingOutlined, 
     ClockCircleOutlined, 
@@ -19,7 +19,10 @@ const Settings: React.FC = () => {
     const [form] = Form.useForm();
 
     const fetchSchool = useCallback(async () => {
-        if (!schoolId) return;
+        if (!schoolId) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const data = await schoolsService.getById(schoolId);
@@ -76,63 +79,75 @@ const Settings: React.FC = () => {
             <PageHeader>
                 <StatItem 
                     icon={<SettingOutlined />} 
-                    value={schoolName} 
+                    value={schoolId ? schoolName : 'Tizim'} 
                     label="sozlamalari" 
                     color="#722ed1"
                 />
             </PageHeader>
 
-            <Card 
-                title={
-                    <Space>
-                        <ClockCircleOutlined style={{ color: '#1890ff' }} />
-                        <span>Davomat sozlamalari</span>
-                    </Space>
-                }
-                size="small"
-                style={{ maxWidth: 500 }}
-            >
-                <Form form={form} layout="vertical" onFinish={handleSave}>
-                    <Form.Item 
-                        name="lateThresholdMinutes" 
-                        label="Kechikish chegarasi (daqiqa)"
-                        tooltip="Dars boshlanishidan necha daqiqa keyin kelgan o'quvchi 'Kech' hisoblanadi"
-                    >
-                        <InputNumber 
-                            min={0} 
-                            max={120} 
-                            style={{ width: '100%' }} 
-                            placeholder="15"
-                            addonAfter="daqiqa"
-                        />
-                    </Form.Item>
-                    
-                    <Form.Item 
-                        name="absenceCutoffMinutes" 
-                        label="Kelmadi deb belgilash muddati"
-                        tooltip="Dars boshlanishidan necha daqiqa keyin kelmagan o'quvchi avtomatik 'Kelmadi' deb belgilanadi"
-                    >
-                        <InputNumber 
-                            min={0} 
-                            max={600} 
-                            style={{ width: '100%' }} 
-                            placeholder="180"
-                            addonAfter="daqiqa"
-                        />
-                    </Form.Item>
-
-                    <Form.Item>
-                        <Button 
-                            type="primary" 
-                            htmlType="submit" 
-                            loading={saving}
-                            icon={<SaveOutlined />}
+            {schoolId ? (
+                <Card 
+                    title={
+                        <Space>
+                            <ClockCircleOutlined style={{ color: '#1890ff' }} />
+                            <span>Davomat sozlamalari</span>
+                        </Space>
+                    }
+                    size="small"
+                    style={{ maxWidth: 500 }}
+                >
+                    <Form form={form} layout="vertical" onFinish={handleSave}>
+                        <Form.Item 
+                            name="lateThresholdMinutes" 
+                            label="Kechikish chegarasi (daqiqa)"
+                            tooltip="Dars boshlanishidan necha daqiqa keyin kelgan o'quvchi 'Kech' hisoblanadi"
                         >
-                            Saqlash
-                        </Button>
-                    </Form.Item>
-                </Form>
-            </Card>
+                            <InputNumber 
+                                min={0} 
+                                max={120} 
+                                style={{ width: '100%' }} 
+                                placeholder="15"
+                                addonAfter="daqiqa"
+                            />
+                        </Form.Item>
+                        
+                        <Form.Item 
+                            name="absenceCutoffMinutes" 
+                            label="Kelmadi deb belgilash muddati"
+                            tooltip="Dars boshlanishidan necha daqiqa keyin kelmagan o'quvchi avtomatik 'Kelmadi' deb belgilanadi"
+                        >
+                            <InputNumber 
+                                min={0} 
+                                max={600} 
+                                style={{ width: '100%' }} 
+                                placeholder="180"
+                                addonAfter="daqiqa"
+                            />
+                        </Form.Item>
+    
+                        <Form.Item>
+                            <Button 
+                                type="primary" 
+                                htmlType="submit" 
+                                loading={saving}
+                                icon={<SaveOutlined />}
+                            >
+                                Saqlash
+                            </Button>
+                        </Form.Item>
+                    </Form>
+                </Card>
+            ) : (
+                <Card size="small" style={{ maxWidth: 500 }}>
+                    <div style={{ padding: '24px 0', textAlign: 'center' }}>
+                        <SettingOutlined style={{ fontSize: 48, color: '#f0f0f0', marginBottom: 16 }} />
+                        <Typography.Title level={5}>Global sozlamalar mavjud emas</Typography.Title>
+                        <Typography.Text type="secondary">
+                            Maktab sozlamalarini o'zgartirish uchun avval maktab paneliga o'ting.
+                        </Typography.Text>
+                    </div>
+                </Card>
+            )}
         </div>
     );
 };

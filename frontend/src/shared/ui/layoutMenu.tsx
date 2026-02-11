@@ -5,7 +5,7 @@ import {
   BookOutlined,
   CalendarOutlined,
   DashboardOutlined,
-  SettingOutlined,
+//   SettingOutlined,
   TeamOutlined,
   VideoCameraOutlined,
   LeftOutlined,
@@ -28,7 +28,7 @@ export function buildMenuItems(params: {
       { key: "/dashboard", icon: <DashboardOutlined />, label: "Boshqaruv" },
       { key: "/schools", icon: <BankOutlined />, label: "Maktablar" },
       { key: "/cameras", icon: <VideoCameraOutlined />, label: "Kameralar" },
-      { key: "/settings", icon: <SettingOutlined />, label: "Sozlamalar" },
+      // { key: "/settings", icon: <SettingOutlined />, label: "Sozlamalar" },
     ];
   }
 
@@ -92,11 +92,11 @@ export function buildMenuItems(params: {
       icon: <TeamOutlined />,
       label: "Xodimlar",
     });
-    items.push({
-      key: `${prefix}/settings`,
-      icon: <SettingOutlined />,
-      label: "Sozlamalar",
-    });
+    // items.push({
+    //   key: `${prefix}/settings`,
+    //   icon: <SettingOutlined />,
+    //   label: "Sozlamalar",
+    // });
   }
 
   // SuperAdmin uchun "Orqaga" tugmasi

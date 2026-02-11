@@ -158,7 +158,7 @@ const Schools: React.FC = () => {
         { 
             title: "O'quvchilar", 
             key: 'students',
-            width: 100,
+            width: 120,
             render: (_: any, record: School) => (
                 <div style={{ textAlign: 'center' }}>
                     <Text strong style={{ color: '#1890ff' }}>{record._count?.students || 0}</Text>
@@ -170,7 +170,7 @@ const Schools: React.FC = () => {
         { 
             title: 'Sinflar', 
             key: 'classes',
-            width: 80,
+            width: 100,
             render: (_: any, record: School) => (
                 <div style={{ textAlign: 'center' }}>
                     <Text strong>{record._count?.classes || 0}</Text>
@@ -182,7 +182,7 @@ const Schools: React.FC = () => {
         {
             title: 'Davomat',
             key: 'attendance',
-            width: 120,
+            width: 160,
             render: (_: any, record: School) => {
                 const stats = record.todayStats;
                 const totalFromStats = stats
