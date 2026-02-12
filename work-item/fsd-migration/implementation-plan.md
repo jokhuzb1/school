@@ -191,6 +191,7 @@
   - Cross-agent impact audit qo'shildi: `work-item/fsd-migration/cross-agent-impact-audit.md`.
   - Frontend API endpointlar va backend `interfaces/http` endpointlari prefix-aware solishtirildi.
   - Yangi regressiya topilmadi; `DELETE /schools/:id` pre-existing gap ekanligi (`HEAD~1` bilan) tasdiqlandi.
+  - Apps-separation bo'yicha backend agentning so'nggi `unstaged` diffi qayta audit qilindi (`README.md`, `apps/backend/src/{config.ts,app/runtime/paths.ts}`) va frontendga ta'sir yo'qligi tasdiqlandi.
 
 ## Latest Verification
 - `npm run typecheck` (`apps/frontend/`) - PASS
@@ -202,4 +203,6 @@
 - `npm run lint` (backend root) - PASS
 - `npm test` (backend root) - PASS
 - `apps/frontend` relocation re-check (`typecheck/build/lint/300-line scan`) - PASS
+- `backend unstaged re-audit` (`apps/frontend` typecheck/build/300-line scan) - PASS
+- `backend unstaged re-audit` (`apps/backend` typecheck/build) - PASS
 - Eslatma: Vite chunk-size warning saqlanib qolgan, lekin build muvaffaqiyatli yakunlangan.

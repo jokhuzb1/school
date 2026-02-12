@@ -35,3 +35,16 @@ export function getToolsDir(...segments: string[]): string {
 export function getEnvFilePath(fileName = ".env"): string {
   return resolveFromAppRoot(fileName);
 }
+
+export function getBackendDir(): string {
+  const cwd = process.cwd();
+  const normalized = cwd.replace(/\\/g, "/");
+  if (normalized.endsWith("/apps/backend")) {
+    return cwd;
+  }
+  return path.join(APP_ROOT_DIR, "apps", "backend");
+}
+
+export function getBackendEnvFilePath(fileName = ".env"): string {
+  return path.join(getBackendDir(), fileName);
+}

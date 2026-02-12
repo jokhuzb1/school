@@ -103,6 +103,12 @@
   - Risk: noto'g'ri artifactni o'chirish.
   - Done criteria: dependency auditda bog'liqlik yo'q, root gate (`typecheck/build/frontend:*`) PASS.
 
+- [x] A5.4 Root package manifest removal (full app-local mode).
+  - Goal: package boshqaruvini to'liq `apps/backend` va `apps/frontend` ichiga o'tkazish.
+  - Impacted: root `package.json`, root `package-lock.json`, `README.md`.
+  - Risk: root-level command odatlari sinishi.
+  - Done criteria: root manifestlar olib tashlangan, app-local gate (`apps/backend` + `apps/frontend`) PASS.
+
 ## Verification Log
 
 | Date | Command | Result | Notes |
@@ -177,6 +183,10 @@
 | 2026-02-12 | `npm run build` (root, post artifact cleanup) | PASS | `apps/backend` delegatsiya |
 | 2026-02-12 | `npm run frontend:typecheck` (root, post artifact cleanup) | PASS | `apps/frontend` gate |
 | 2026-02-12 | `npm run frontend:build` (root, post artifact cleanup) | PASS | `apps/frontend` gate |
+| 2026-02-12 | `npm run typecheck` (`apps/backend`) | PASS | app-local gate (post root manifest removal) |
+| 2026-02-12 | `npm run build` (`apps/backend`) | PASS | app-local gate (post root manifest removal) |
+| 2026-02-12 | `npm run typecheck` (`apps/frontend`) | PASS | app-local gate (post root manifest removal) |
+| 2026-02-12 | `npm run build` (`apps/frontend`) | PASS | app-local gate (post root manifest removal) |
 | 2026-02-12 | `docker --version` | FAIL | local env'da docker binary yo'q, image verify bloklangan |
 
 ## Open Risks (Current)

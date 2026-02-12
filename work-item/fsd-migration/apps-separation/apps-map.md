@@ -14,6 +14,7 @@
 | `Dockerfile` | `apps/backend/Dockerfile` | DONE (root `Dockerfile` removed, canonical inside app) |
 | `docker-compose.yml` | root orchestration, backend build -> `apps/backend/Dockerfile` | DONE (updated) |
 | Root temp/build artifactlari (`.tmp`, `.cargo-target-sr`, `target_verify_*`, `image-for-face-id`, `tmp_rovodev_*`, root `dist`) | removed | DONE (dependency audit bilan tozalangan) |
+| Root `package.json` + `package-lock.json` | removed (fully app-local package management) | DONE |
 
 ## Runtime Path Sensitive Areas
 

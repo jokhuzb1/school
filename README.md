@@ -6,11 +6,6 @@ Current app layout
 - Web frontend source: `apps/frontend`
 - Desktop app source: `apps/student-registrator`
 
-Root commands (backward-compatible)
-
-- Backend: `npm run dev`, `npm run build`, `npm run typecheck`, `npm run test`, `npm run lint`
-- Frontend: `npm run frontend:dev`, `npm run frontend:build`, `npm run frontend:typecheck`
-
 Docker layout
 
 - Backend image definition: `apps/backend/Dockerfile`
@@ -18,27 +13,38 @@ Docker layout
 
 Setup & run
 
-1. Install dependencies:
+1. Backend dependencies:
 
 ```
+cd apps/backend
 npm install
 ```
 
-2. Run Prisma migrate:
+2. Frontend dependencies:
 
 ```
+cd apps/frontend
+npm install
+```
+
+3. Run backend migrate:
+
+```
+cd apps/backend
 npm run db:migrate
 ```
 
-3. Seed database:
+4. Seed database:
 
 ```
+cd apps/backend
 npm run db:seed
 ```
 
-4. Start dev server:
+5. Start backend dev server:
 
 ```
+cd apps/backend
 npm run dev
 ```
 

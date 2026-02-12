@@ -163,6 +163,12 @@
   - Risks: endpoint/prefix kontrakt drift ko'zdan qochishi.
   - Done: frontend-vs-backend endpoint diff bajarildi; yangi regressiya topilmadi, bitta pre-existing gap (`DELETE /schools/:id`) hujjatlashtirildi.
 
+- [x] T7.4 Apps-separation backend o'zgarishlari bo'yicha re-audit.
+  - Goal: backend agentning so'nggi `unstaged` o'zgarishlari frontend FSD qatlamiga ta'sir qilmaganini qayta tasdiqlash.
+  - Files: `README.md`, `apps/backend/src/{config.ts,app/runtime/paths.ts}`, `work-item/fsd-migration/apps-separation/*`, `work-item/fsd-migration/cross-agent-impact-audit.md`
+  - Risks: `.env` lookup yo'li o'zgarishi yoki app-local command policy drifti.
+  - Done: diff ko'rildi, frontend source o'zgarmagani tasdiqlandi, `apps/frontend` va `apps/backend` gate'lari qayta PASS bo'ldi.
+
 - [x] T6.3 Legacy wrapper stabilizatsiyasi (`hooks/services/context`).
   - Goal: eski import yo'llarni buzmasdan FSD qatlamiga ko'chirish.
   - Files: `apps/frontend/src/hooks/**`, `apps/frontend/src/services/**`, `apps/frontend/src/context/**`
@@ -225,3 +231,8 @@
 | 7 (apps relocation recheck) | `npm run build` (apps/frontend) | PASS | Build muvaffaqiyatli, chunk-size warning saqlanib qoldi |
 | 7 (apps relocation recheck) | `npm run lint` (apps/frontend) | PASS (warnings) | Lint error yo'q, 6 ta oldingi warning saqlangan |
 | 7 (apps relocation recheck) | `300-line scan` (`apps/frontend/src/**/*.ts(x)`) | PASS | `.ts/.tsx` fayllar orasida 300 qatordan oshgani yo'q |
+| 7 (backend unstaged re-audit) | `npm run typecheck` (`apps/frontend`) | PASS | Backend `.env` path fallback refaktoridan keyin frontend compile barqaror |
+| 7 (backend unstaged re-audit) | `npm run build` (`apps/frontend`) | PASS | Frontend build muvaffaqiyatli, chunk-size warning oldingi holatda |
+| 7 (backend unstaged re-audit) | `300-line scan` (`apps/frontend/src/**/*.{ts,tsx,css}`) | PASS | Frontend source fayllarda 300+ qator aniqlanmadi |
+| 7 (backend unstaged re-audit) | `npm run typecheck` (`apps/backend`) | PASS | Backend app-local typecheck muvaffaqiyatli (`apps/backend/src/config.ts` o'zgarishi bilan) |
+| 7 (backend unstaged re-audit) | `npm run build` (`apps/backend`) | PASS | Backend build muvaffaqiyatli, kontrakt bo'yicha yangi regressiya topilmadi |

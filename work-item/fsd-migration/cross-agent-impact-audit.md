@@ -42,6 +42,24 @@
   - `work-item/fsd-migration/backend-ddd/tasks.md`
 - Frontend FSD hujjatlariga (`work-item/fsd-migration/tasks.md`, `work-item/fsd-migration/implementation-plan.md`, `work-item/fsd-migration/fsd-map.md`) konflikt topilmadi.
 
+### 5) Apps-separation bo'yicha so'nggi `unstaged` diff re-auditi
+- Kuzatilgan fayllar:
+  - `README.md`
+  - `apps/backend/src/app/runtime/paths.ts`
+  - `apps/backend/src/config.ts`
+  - `work-item/fsd-migration/apps-separation/apps-map.md`
+  - `work-item/fsd-migration/apps-separation/tasks.md`
+- Mazmuniy ta'sir:
+  - Backend `.env` yuklash yo'li app-local (`apps/backend/.env`) prioritetga o'tgan, fallback root `.env` saqlangan.
+  - Root `package.json`/`package-lock.json` olib tashlangan mode hujjatlashtirilgan (to'liq app-local package management).
+  - Frontend source qatlamida kod diff topilmadi.
+- Re-check gate natijalari:
+  - `npm run typecheck` (`apps/frontend`) PASS
+  - `npm run build` (`apps/frontend`) PASS
+  - `300-line scan` (`apps/frontend/src/**/*.{ts,tsx,css}`) PASS
+  - `npm run typecheck` (`apps/backend`) PASS
+  - `npm run build` (`apps/backend`) PASS
+
 ## Conclusion
 - Hozirgi snapshot bo'yicha backend agentlar o'zgarishlari frontend FSD migratsiyani buzmagan.
 - Joriy risk: keyingi backend commitlarda API contract drift paydo bo'lishi mumkin (ayniqsa `schools` delete flow bo'yicha follow-up ochiq).

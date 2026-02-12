@@ -1,7 +1,12 @@
 import dotenv from "dotenv";
-import { getEnvFilePath } from "./app/runtime/paths";
+import { getBackendEnvFilePath, getEnvFilePath } from "./app/runtime/paths";
 
-dotenv.config({ path: getEnvFilePath(".env") });
+const appEnvPath = getBackendEnvFilePath(".env");
+const rootEnvPath = getEnvFilePath(".env");
+const appEnvResult = dotenv.config({ path: appEnvPath });
+if (appEnvResult.error) {
+  dotenv.config({ path: rootEnvPath });
+}
 
 export const NODE_ENV = process.env.NODE_ENV || "development";
 export const IS_PROD = NODE_ENV === "production";
