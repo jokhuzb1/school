@@ -1,0 +1,183 @@
+/* ============================================
+   Progress Bar
+   ============================================ */
+.progress-container {
+  margin: var(--space-4) 0;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--neutral-600);
+  margin-bottom: var(--space-2);
+}
+
+.progress-bar {
+  height: 8px;
+  background: var(--neutral-200);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+}
+
+/* ============================================
+   Import Preview Table
+   ============================================ */
+.import-preview {
+  margin-top: var(--space-4);
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+}
+
+.import-preview .table {
+  margin: 0;
+  border: none;
+}
+
+.import-preview .table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.import-stats {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  font-size: 13px;
+}
+
+.import-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.import-stat.success {
+  color: var(--success-600);
+}
+
+.import-stat.error {
+  color: var(--error-600);
+}
+
+/* Toast z-index - modal ustida ko'rinishi uchun */
+.toast-container {
+  z-index: 9999 !important;
+}
+
+/* ============================================
+   Login Screen
+   ============================================ */
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--neutral-50) 0%, var(--primary-50) 100%);
+  padding: var(--space-6);
+}
+
+.login-card {
+  background: white;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  padding: var(--space-10);
+  width: 100%;
+  max-width: 420px;
+  border: 1px solid var(--neutral-200);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: var(--space-8);
+}
+
+.login-header h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--neutral-900);
+  margin-bottom: var(--space-2);
+  letter-spacing: -0.025em;
+}
+
+.login-header p {
+  color: var(--neutral-500);
+  font-size: 14px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.login-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.login-form .form-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--neutral-700);
+}
+
+.login-error {
+  background: var(--error-50);
+  color: var(--error-700);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  border: 1px solid var(--error-100);
+  text-align: center;
+}
+
+
+/* User Info in Header */
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--neutral-100);
+  border-radius: var(--radius-lg);
+}
+
+.user-info-name {
+  font-weight: 500;
+  color: var(--neutral-700);
+}
+
+.user-info-role {
+  font-size: 0.75rem;
+  color: var(--neutral-500);
+}
+
+.btn-logout {
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  color: var(--neutral-600);
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.btn-logout:hover {
+  background: var(--error-50);
+  border-color: var(--error-200);
+  color: var(--error-600);
+}
+

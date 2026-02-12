@@ -1,0 +1,7 @@
+node_modules
+dist
+frontend/node_modules
+apps/frontend/node_modules
+**/*.test.ts
+**/*.spec.ts
+src/**/__tests__/**

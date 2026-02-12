@@ -1,0 +1,260 @@
+/* ============================================
+   Students Page Styles
+   ============================================ */
+
+/* Integrated Filter Bar */
+.filter-bar-integrated {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(8px);
+}
+
+[data-theme="dark"] .filter-bar-integrated {
+  background: rgba(30, 41, 59, 0.7);
+}
+
+.filter-bar-integrated .filter-item {
+  display: flex;
+  align-items: center;
+}
+
+.filter-bar-integrated .search-group {
+  flex: 1;
+}
+
+.input-with-icon {
+  position: relative;
+  width: 100%;
+}
+
+.input-with-icon .icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.input-with-icon .input {
+  padding-left: 38px;
+  width: 100%;
+}
+
+.filter-bar-integrated .select {
+  min-width: 180px;
+  height: 40px;
+}
+
+.filter-bar-integrated .actions-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.filter-bar .form-group {
+  flex: 1;
+  margin: 0;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--hover-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Students Toolbar */
+.students-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.students-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.students-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Students Pagination */
+.students-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.students-pagination-info {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.students-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.students-pagination-page {
+  min-width: 64px;
+  text-align: center;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+/* Diagnostics */
+.diagnostics-table .table td {
+  vertical-align: top;
+}
+
+.diagnostics-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.diagnostics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-width: 640px;
+}
+
+.diagnostics-grid-detailed {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.diagnostics-item {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.5rem;
+  background: var(--card-bg);
+}
+
+.diagnostics-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.diagnostics-device-name {
+  font-weight: 600;
+  color: var(--text-color);
+  font-size: 0.8125rem;
+}
+
+.diagnostics-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* Diagnostics Popover */
+.diagnostics-hover {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.diagnostics-trigger {
+  border: none;
+  cursor: pointer;
+}
+
+.diagnostics-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  width: min(420px, 70vw);
+  max-height: 360px;
+  overflow: auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  padding: 0.85rem;
+  display: none;
+  z-index: 9999;
+  backdrop-filter: blur(8px);
+}
+
+.diagnostics-hover:hover .diagnostics-popover,
+.diagnostics-hover.is-open .diagnostics-popover {
+  display: block;
+}
+
+.diagnostics-popover-title {
+  font-size: 0.8125rem;
+  color: var(--text-color);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.diagnostics-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.diagnostics-popover-item {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.45rem;
+}
+
+.diagnostics-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.diagnostics-popover-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* Ensure table row doesn't clip the high z-index popover */
+.table tbody tr:has(.diagnostics-hover:hover),
+.table tbody tr:has(.diagnostics-hover.is-open) {
+  position: relative;
+  z-index: 100;
+}
+

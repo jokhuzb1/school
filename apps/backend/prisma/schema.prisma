@@ -1,0 +1,429 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model School {
+  id                  String   @id @default(uuid())
+  name                String
+  schoolNumber        Int?     // Maktab raqami (tartiblash uchun)
+  address             String?
+  phone               String?
+  email               String?
+  webhookSecretIn     String   @default(uuid())
+  webhookSecretOut    String   @default(uuid())
+  lateThresholdMinutes Int     @default(15)
+  absenceCutoffMinutes Int     @default(180)
+  timezone            String   @default("Asia/Tashkent")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  users               User[]
+  classes             Class[]
+  students            Student[]
+  devices             Device[]
+  nvrs                Nvr[]
+  cameraAreas         CameraArea[]
+  cameras             Camera[]
+  attendanceEvents    AttendanceEvent[]
+  dailyAttendances    DailyAttendance[]
+  holidays            Holiday[]
+  provisionings       StudentProvisioning[]
+  provisioningLogs    ProvisioningLog[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(SCHOOL_ADMIN)
+  schoolId  String?
+  school    School?  @relation(fields: [schoolId], references: [id])
+
+  // TEACHER -> Class assignment
+  teacherClasses TeacherClass[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([role])
+}
+
+enum Role {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  REGISTRATOR
+  TEACHER
+  GUARD
+}
+
+model TeacherClass {
+  id        String @id @default(uuid())
+  teacherId String
+  classId   String
+
+  teacher   User   @relation(fields: [teacherId], references: [id])
+  class     Class  @relation(fields: [classId], references: [id])
+
+  @@unique([teacherId, classId])
+  @@index([teacherId])
+  @@index([classId])
+}
+
+
+model Class {
+  id         String   @id @default(uuid())
+  name       String
+  gradeLevel Int
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id])
+  startTime  String
+  endTime    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  students   Student[]
+
+  teacherClasses TeacherClass[]
+
+  @@index([schoolId])
+  @@index([schoolId, gradeLevel])
+}
+
+model Student {
+  id                 String   @id @default(uuid())
+  deviceStudentId    String?  // the ID registered in Hikvision device
+  name               String
+  firstName          String   @default("")
+  lastName           String   @default("")
+  fatherName         String?
+  gender             Gender   @default(MALE)
+  schoolId           String
+  school             School   @relation(fields: [schoolId], references: [id])
+  classId            String?
+  class              Class?   @relation(fields: [classId], references: [id])
+  parentPhone        String?
+  photoUrl           String?
+  isActive           Boolean  @default(true)
+  deviceSyncStatus   ProvisioningStatus?
+  deviceSyncUpdatedAt DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  attendanceEvents   AttendanceEvent[]
+  dailyAttendances   DailyAttendance[]
+  provisionings      StudentProvisioning[]
+  deviceLinks        StudentDeviceLink[]
+  provisioningLogs   ProvisioningLog[]
+
+  @@index([schoolId])
+  @@index([schoolId, isActive])
+  @@index([classId])
+  @@index([deviceStudentId])  // Webhook lookup uchun KRITIK
+  @@index([schoolId, classId, isActive])
+  @@index([schoolId, classId, lastName, firstName])
+  @@unique([schoolId, deviceStudentId])
+}
+
+model Device {
+  id         String   @id @default(uuid())
+  name       String
+  deviceId   String   @unique
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id])
+  type       DeviceType
+  location   String?
+  isActive   Boolean  @default(true)
+  lastSeenAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  attendanceEvents AttendanceEvent[]
+  studentLinks StudentDeviceLink[]
+  provisioningLogs ProvisioningLog[]
+
+  @@index([schoolId])
+  @@index([schoolId, isActive])
+  @@index([deviceId, schoolId])  // Webhook verification uchun
+}
+
+enum DeviceType {
+  ENTRANCE
+  EXIT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum ProvisioningStatus {
+  PENDING
+  PROCESSING
+  PARTIAL
+  CONFIRMED
+  FAILED
+}
+
+enum DeviceProvisioningStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum ProvisioningLogLevel {
+  INFO
+  WARN
+  ERROR
+}
+
+model StudentProvisioning {
+  id            String   @id @default(uuid())
+  studentId     String
+  schoolId      String
+  status        ProvisioningStatus @default(PENDING)
+  requestId     String?  @unique
+  lastError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  student       Student  @relation(fields: [studentId], references: [id])
+  school        School   @relation(fields: [schoolId], references: [id])
+  devices       StudentDeviceLink[]
+  logs          ProvisioningLog[]
+
+  @@index([studentId])
+  @@index([schoolId])
+  @@index([status])
+}
+
+model ProvisioningLog {
+  id             String   @id @default(uuid())
+  schoolId       String
+  studentId      String?
+  provisioningId String?
+  deviceId       String?
+  level          ProvisioningLogLevel @default(INFO)
+  eventType      String?
+  stage          String
+  status         String?
+  message        String?
+  payload        Json?
+  actorId        String?
+  actorRole      String?
+  actorName      String?
+  actorIp        String?
+  userAgent      String?
+  source         String?
+  createdAt      DateTime @default(now())
+
+  school         School   @relation(fields: [schoolId], references: [id])
+  student        Student? @relation(fields: [studentId], references: [id])
+  provisioning   StudentProvisioning? @relation(fields: [provisioningId], references: [id])
+  device         Device?  @relation(fields: [deviceId], references: [id])
+
+  @@index([schoolId])
+  @@index([provisioningId])
+  @@index([studentId])
+  @@index([deviceId])
+  @@index([level])
+  @@index([eventType])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model StudentDeviceLink {
+  id             String   @id @default(uuid())
+  studentId      String
+  deviceId       String
+  provisioningId String
+  status         DeviceProvisioningStatus @default(PENDING)
+  employeeNoOnDevice String?
+  attemptCount   Int      @default(0)
+  lastError      String?
+  lastAttemptAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  student        Student  @relation(fields: [studentId], references: [id])
+  device         Device   @relation(fields: [deviceId], references: [id])
+  provisioning   StudentProvisioning @relation(fields: [provisioningId], references: [id])
+
+  @@unique([provisioningId, deviceId])
+  @@index([studentId])
+  @@index([deviceId])
+  @@index([status])
+}
+
+enum NvrProtocol {
+  ONVIF
+  RTSP
+  HYBRID
+}
+
+enum CameraStatus {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+}
+
+model Nvr {
+  id               String       @id @default(uuid())
+  schoolId         String
+  school           School       @relation(fields: [schoolId], references: [id])
+  name             String
+  vendor           String?
+  model            String?
+  host             String
+  httpPort         Int          @default(80)
+  onvifPort        Int          @default(80)
+  rtspPort         Int          @default(554)
+  username         String
+  passwordEncrypted String
+  protocol         NvrProtocol  @default(ONVIF)
+  isActive         Boolean      @default(true)
+  lastHealthCheckAt DateTime?
+  lastHealthStatus String?
+  lastHealthError  String?
+  lastSyncAt       DateTime?
+  lastSyncStatus   String?
+  lastSyncError    String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  cameras          Camera[]
+  areas            CameraArea[]
+
+  @@index([schoolId])
+  @@index([schoolId, isActive])
+  @@index([host])
+}
+
+model CameraArea {
+  id          String   @id @default(uuid())
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id])
+  nvrId       String?
+  nvr         Nvr?     @relation(fields: [nvrId], references: [id])
+  name        String
+  description String?
+  externalId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  cameras     Camera[]
+
+  @@index([schoolId])
+  @@index([nvrId])
+  @@index([schoolId, name])
+  @@unique([nvrId, externalId])
+}
+
+model Camera {
+  id              String        @id @default(uuid())
+  schoolId        String
+  school          School        @relation(fields: [schoolId], references: [id])
+  nvrId           String?
+  nvr             Nvr?          @relation(fields: [nvrId], references: [id])
+  areaId          String?
+  area            CameraArea?   @relation(fields: [areaId], references: [id])
+  name            String
+  externalId      String?
+  channelNo       Int?
+  streamUrl       String?
+  streamProfile   String        @default("main") // "main" or "sub"
+  autoGenerateUrl Boolean       @default(true)   // Auto-generate URL from NVR
+  status          CameraStatus  @default(UNKNOWN)
+  isActive        Boolean       @default(true)
+  lastSeenAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([schoolId])
+  @@index([nvrId])
+  @@index([areaId])
+  @@index([schoolId, isActive])
+  @@unique([nvrId, externalId])
+  @@unique([nvrId, channelNo])
+}
+
+model AttendanceEvent {
+  id         String   @id @default(uuid())
+  eventKey   String   @unique
+  studentId  String?
+  student    Student? @relation(fields: [studentId], references: [id])
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id])
+  deviceId   String?
+  device     Device?  @relation(fields: [deviceId], references: [id])
+  eventType  EventType
+  timestamp  DateTime
+  rawPayload Json
+  createdAt  DateTime @default(now())
+
+  @@index([schoolId])
+  @@index([schoolId, timestamp])
+  @@index([studentId])
+  @@index([studentId, timestamp])
+  @@index([timestamp])
+  @@index([schoolId, eventType, timestamp])
+}
+
+enum EventType {
+  IN
+  OUT
+}
+
+model DailyAttendance {
+  id                  String   @id @default(uuid())
+  studentId           String
+  student             Student  @relation(fields: [studentId], references: [id])
+  schoolId            String
+  school              School   @relation(fields: [schoolId], references: [id])
+  date                DateTime
+  status              AttendanceStatus
+  firstScanTime       DateTime?
+  lastScanTime        DateTime?
+  lateMinutes         Int?
+  totalTimeOnPremises Int?      // Jami maktabda bo'lgan vaqt (daqiqalarda)
+  notes               String?
+  
+  // Yangi fieldlar - IN/OUT tracking uchun
+  lastInTime          DateTime? // Oxirgi KIRISH vaqti
+  lastOutTime         DateTime? // Oxirgi CHIQISH vaqti
+  currentlyInSchool   Boolean   @default(false) // Hozir maktabdami?
+  scanCount           Int       @default(0) // Jami scan soni
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([studentId, date])
+  @@index([schoolId])
+  @@index([schoolId, date])
+  @@index([schoolId, date, status])
+  @@index([date])
+  @@index([date, currentlyInSchool])
+  @@index([schoolId, currentlyInSchool])
+  @@index([studentId])
+  @@index([status])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  EXCUSED
+}
+
+model Holiday {
+  id        String   @id @default(uuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  date      DateTime
+  name      String
+  createdAt DateTime @default(now())
+
+  @@index([schoolId])
+  @@index([schoolId, date])
+  @@index([date])
+}

@@ -1,28 +1,50 @@
 Attendance System
 
+Current app layout
+
+- Backend source: `apps/backend`
+- Web frontend source: `apps/frontend`
+- Desktop app source: `apps/student-registrator`
+
+Docker layout
+
+- Backend image definition: `apps/backend/Dockerfile`
+- Compose orchestration: root `docker-compose.yml` (backend build context `apps/backend`)
+
 Setup & run
 
-1. Install dependencies:
+1. Backend dependencies:
 
 ```
+cd apps/backend
 npm install
 ```
 
-2. Run Prisma migrate:
+2. Frontend dependencies:
 
 ```
+cd apps/frontend
+npm install
+```
+
+3. Run backend migrate:
+
+```
+cd apps/backend
 npm run db:migrate
 ```
 
-3. Seed database:
+4. Seed database:
 
 ```
+cd apps/backend
 npm run db:seed
 ```
 
-4. Start dev server:
+5. Start backend dev server:
 
 ```
+cd apps/backend
 npm run dev
 ```
 
@@ -96,7 +118,10 @@ paths:
     source: rtsp://user:pass@192.168.1.50:554/Streaming/Channels/101
 ```
 
-The UI will request `WEBRTC_BASE_URL + /whep/schools/<schoolId>/cameras/<cameraId|externalId>`.
+The UI will request WHEP at `WEBRTC_BASE_URL + /schools/<schoolId>/cameras/<cameraId|externalId>/whep`.
+
+Security note:
+- RTSP URLs returned by the API are masked by default to avoid password leakage. Only `SUPER_ADMIN` can request the full RTSP URL by adding `?includeRtspPassword=true` to `GET /cameras/:id/stream` (and to `POST /schools/:schoolId/preview-rtsp-url`).
 
 ONVIF Auto-Sync
 
@@ -123,3 +148,12 @@ WebRTC ICE (STUN/TURN)
 
 - Configure in UI (Cameras -> NVR tab -> "WebRTC sozlama") or via `VITE_WEBRTC_ICE_SERVERS`.
 - Example: `[{"urls":"stun:stun.l.google.com:19302"}]`
+
+Excel (iVMS-4200 face import prep)
+
+- Extract embedded images and name by `Person ID`:
+  - `npm run excel:extract-images -- --input "<file.xlsx>" --out ".\\out\\faces" [--sheet "<sheet>"] [--id-header "Person ID"] [--name-header "Name"]`
+  - Docs: `apps/backend/scripts/extract-excel-images.md`
+
+- Simple web UI (upload XLSX → download ZIP):
+  - Open: `GET /tools/excel-face-export`
