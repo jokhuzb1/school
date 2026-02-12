@@ -1,9 +1,9 @@
-﻿# Backend DDD Refactor Tasks
+# Backend DDD Refactor Tasks
 
 ## Meta
 - Scope: `server.ts` va `src/**` backend DDD refaktori (behavior 1:1 saqlanadi).
 - Branch: joriy branch, yangi branch ochilmadi.
-- Frontend safety: `frontend/**` va `apps/student-registrator/**` ga tegilmadi.
+- Frontend safety: `apps/frontend/**` va `apps/student-registrator/**` ga tegilmadi.
 - Sana: `2026-02-12` holati.
 
 ## Phase Status

@@ -1,9 +1,9 @@
-﻿# FSD Implementation Plan
+# FSD Implementation Plan
 
 ## Principles
 - Zero behavior change: UI, route, API contract, state behavior o'zgarmaydi.
 - Refactor only: move/split/rename/export boundary.
-- Har bosqichdan keyin verification: `npm run typecheck` + `npm run build` (`frontend/`).
+- Har bosqichdan keyin verification: `npm run typecheck` + `npm run build` (`apps/frontend/`).
 
 ## Phase 0 - Audit va baseline (DONE)
 - Scope: joriy frontend struktura, 300+ fayllar, import yo'nalishlari.
@@ -42,16 +42,16 @@
 
 ### Phase 2 progress
 - DONE:
-  - `frontend/src/config.ts` -> `frontend/src/shared/config/index.ts` (keyin Phase 6 da root wrapper olib tashlandi).
-  - `frontend/src/services/api.ts` -> `frontend/src/shared/api/client.ts` (wrapper saqlangan).
-  - `frontend/src/services/sse.ts` -> `frontend/src/shared/api/sse.ts` (wrapper saqlangan).
-  - `frontend/src/services/search.ts` -> `frontend/src/shared/api/search.ts` (wrapper saqlangan).
-  - `frontend/src/types/index.ts` 300+ split -> `frontend/src/shared/types/{core,attendance,api,index}.ts` (keyin Phase 6 da root wrapper olib tashlandi).
-  - `frontend/src/mock/services.ts` va `frontend/src/mock/data.ts` bo'lindi:
-    - `frontend/src/mock/services/{auth-schools-classes,students-devices,analytics-misc}.ts`
-    - `frontend/src/mock/generators.ts`
-    - `frontend/src/mock/services.ts` barrel saqlandi.
-  - `frontend/src/shared/ui/useLayoutSearch.tsx` -> `@shared/api/search`ga ulandi.
+  - `apps/frontend/src/config.ts` -> `apps/frontend/src/shared/config/index.ts` (keyin Phase 6 da root wrapper olib tashlandi).
+  - `apps/frontend/src/services/api.ts` -> `apps/frontend/src/shared/api/client.ts` (wrapper saqlangan).
+  - `apps/frontend/src/services/sse.ts` -> `apps/frontend/src/shared/api/sse.ts` (wrapper saqlangan).
+  - `apps/frontend/src/services/search.ts` -> `apps/frontend/src/shared/api/search.ts` (wrapper saqlangan).
+  - `apps/frontend/src/types/index.ts` 300+ split -> `apps/frontend/src/shared/types/{core,attendance,api,index}.ts` (keyin Phase 6 da root wrapper olib tashlandi).
+  - `apps/frontend/src/mock/services.ts` va `apps/frontend/src/mock/data.ts` bo'lindi:
+    - `apps/frontend/src/mock/services/{auth-schools-classes,students-devices,analytics-misc}.ts`
+    - `apps/frontend/src/mock/generators.ts`
+    - `apps/frontend/src/mock/services.ts` barrel saqlandi.
+  - `apps/frontend/src/shared/ui/useLayoutSearch.tsx` -> `@shared/api/search`ga ulandi.
 
 ## Phase 3 - Entities migration (DONE)
 - Scope:
@@ -105,52 +105,52 @@
 
 ### Phase 5 progress
 - DONE (partial):
-  - `frontend/src/shared/ui/Layout.tsx` 464 -> 277 qatorga tushirildi.
+  - `apps/frontend/src/shared/ui/Layout.tsx` 464 -> 277 qatorga tushirildi.
   - Ajratilgan modullar:
-    - `frontend/src/shared/ui/LayoutSearch.tsx`
-    - `frontend/src/shared/ui/useLayoutSearch.tsx`
-    - `frontend/src/shared/ui/layout.constants.ts`
-  - `frontend/src/pages/Holidays.tsx` 315 -> 260 qatorga tushirildi (`frontend/src/pages/holidaysColumns.tsx`ga ajratildi).
-  - `frontend/src/pages/Devices.tsx` 449 -> 188 qatorga tushirildi.
+    - `apps/frontend/src/shared/ui/LayoutSearch.tsx`
+    - `apps/frontend/src/shared/ui/useLayoutSearch.tsx`
+    - `apps/frontend/src/shared/ui/layout.constants.ts`
+  - `apps/frontend/src/pages/Holidays.tsx` 315 -> 260 qatorga tushirildi (`apps/frontend/src/pages/holidaysColumns.tsx`ga ajratildi).
+  - `apps/frontend/src/pages/Devices.tsx` 449 -> 188 qatorga tushirildi.
     - Ajratilgan modullar:
-      - `frontend/src/pages/devicesColumns.tsx`
-      - `frontend/src/pages/DeviceCopyField.tsx`
-      - `frontend/src/pages/DeviceFormModal.tsx`
-      - `frontend/src/pages/DeviceWebhookCard.tsx`
-  - `frontend/src/pages/Users.tsx` 435 -> 181 qatorga tushirildi.
+      - `apps/frontend/src/pages/devicesColumns.tsx`
+      - `apps/frontend/src/pages/DeviceCopyField.tsx`
+      - `apps/frontend/src/pages/DeviceFormModal.tsx`
+      - `apps/frontend/src/pages/DeviceWebhookCard.tsx`
+  - `apps/frontend/src/pages/Users.tsx` 435 -> 181 qatorga tushirildi.
     - Ajratilgan modullar:
-      - `frontend/src/pages/usersColumns.tsx`
-      - `frontend/src/pages/UserCreateModal.tsx`
-      - `frontend/src/pages/UserAssignClassesModal.tsx`
-      - `frontend/src/pages/UserEditModal.tsx`
-  - `frontend/src/pages/Schools.tsx` 504 -> 180 qatorga tushirildi.
+      - `apps/frontend/src/pages/usersColumns.tsx`
+      - `apps/frontend/src/pages/UserCreateModal.tsx`
+      - `apps/frontend/src/pages/UserAssignClassesModal.tsx`
+      - `apps/frontend/src/pages/UserEditModal.tsx`
+  - `apps/frontend/src/pages/Schools.tsx` 504 -> 180 qatorga tushirildi.
     - Ajratilgan modullar:
-      - `frontend/src/pages/schoolsColumns.tsx`
-      - `frontend/src/pages/SchoolFormModal.tsx`
-  - `frontend/src/pages/Attendance.tsx` 520 -> 234 qatorga tushirildi.
+      - `apps/frontend/src/pages/schoolsColumns.tsx`
+      - `apps/frontend/src/pages/SchoolFormModal.tsx`
+  - `apps/frontend/src/pages/Attendance.tsx` 520 -> 234 qatorga tushirildi.
     - Ajratilgan modullar:
-      - `frontend/src/pages/attendanceColumns.tsx`
-      - `frontend/src/pages/AttendanceFiltersBar.tsx`
-      - `frontend/src/pages/AttendanceExcuseModal.tsx`
-  - `frontend/src/pages/SuperAdminDashboard.tsx` 816 -> 205 qatorga tushirildi.
+      - `apps/frontend/src/pages/attendanceColumns.tsx`
+      - `apps/frontend/src/pages/AttendanceFiltersBar.tsx`
+      - `apps/frontend/src/pages/AttendanceExcuseModal.tsx`
+  - `apps/frontend/src/pages/SuperAdminDashboard.tsx` 816 -> 205 qatorga tushirildi.
     - Ajratilgan modullar:
-      - `frontend/src/pages/SuperAdminDashboardView.tsx`
-      - `frontend/src/pages/superAdminColumns.tsx`
-      - `frontend/src/pages/superAdminTypes.ts`
-  - `frontend/src/pages/Students.tsx` 744 -> 299 qatorga tushirildi.
+      - `apps/frontend/src/pages/SuperAdminDashboardView.tsx`
+      - `apps/frontend/src/pages/superAdminColumns.tsx`
+      - `apps/frontend/src/pages/superAdminTypes.ts`
+  - `apps/frontend/src/pages/Students.tsx` 744 -> 299 qatorga tushirildi.
     - Ajratilgan modullar:
-      - `frontend/src/pages/studentsColumns.tsx`
-      - `frontend/src/pages/StudentFormModal.tsx`
-      - `frontend/src/pages/ImportErrorsModal.tsx`
-      - `frontend/src/pages/StudentImportControls.tsx`
-      - `frontend/src/pages/StudentsHeader.tsx`
-  - `frontend/src/pages/ClassDetail.tsx` split va tip regressiyasi tuzatildi (`ClassDetailContent`, `ClassDetailEditModal`).
-  - `frontend/src/pages/Students.tsx` qo'shimcha bo'linib 266 qatorga tushirildi (`studentsFileActions.ts`).
-  - `frontend/src/pages/Dashboard.tsx` 1076 -> 123 qatorga tushirildi (state-hook + section komponentlar).
-  - `frontend/src/pages/StudentDetail.tsx` 955 -> 163 qatorga tushirildi (header/filter/top-row/weekly/table/modal modullarga ajratildi).
-  - `frontend/src/pages/Cameras.tsx` 1760 -> 282 qatorga tushirildi (CRUD/ops hooklari, tabs/preview/drawers/modals bo'linishi).
+      - `apps/frontend/src/pages/studentsColumns.tsx`
+      - `apps/frontend/src/pages/StudentFormModal.tsx`
+      - `apps/frontend/src/pages/ImportErrorsModal.tsx`
+      - `apps/frontend/src/pages/StudentImportControls.tsx`
+      - `apps/frontend/src/pages/StudentsHeader.tsx`
+  - `apps/frontend/src/pages/ClassDetail.tsx` split va tip regressiyasi tuzatildi (`ClassDetailContent`, `ClassDetailEditModal`).
+  - `apps/frontend/src/pages/Students.tsx` qo'shimcha bo'linib 266 qatorga tushirildi (`studentsFileActions.ts`).
+  - `apps/frontend/src/pages/Dashboard.tsx` 1076 -> 123 qatorga tushirildi (state-hook + section komponentlar).
+  - `apps/frontend/src/pages/StudentDetail.tsx` 955 -> 163 qatorga tushirildi (header/filter/top-row/weekly/table/modal modullarga ajratildi).
+  - `apps/frontend/src/pages/Cameras.tsx` 1760 -> 282 qatorga tushirildi (CRUD/ops hooklari, tabs/preview/drawers/modals bo'linishi).
 - Current status:
-  - `frontend/src` ichida 300+ qatorli `.ts/.tsx` fayl qolmadi (tekshirildi).
+  - `apps/frontend/src` ichida 300+ qatorli `.ts/.tsx` fayl qolmadi (tekshirildi).
   - Hujjatlar markazlashuvi: `work-item/fsd-migration/` ichida yuritilmoqda.
 
 ## Phase 6 - Final cleanup (DONE)
@@ -170,12 +170,12 @@
 - Boundary tozalash:
   - `shared` -> `entities` bog'liqligi olib tashlandi (`Layout` va `ProtectedRoute` shared'dan chiqarildi).
 - Lint tekshiruvida `no-restricted-imports` errorlari tozalandi.
-- Yakuniy tozalashda `frontend/src/{hooks,services,context}` papkalari `work-item/fsd-migration/legacy-src/`ga ko'chirildi.
+- Yakuniy tozalashda `apps/frontend/src/{hooks,services,context}` papkalari `work-item/fsd-migration/legacy-src/`ga ko'chirildi.
 - Import normalizatsiya:
   - `../types`, `../../types`, `../../../types` importlari `@shared/types`ga o'tkazildi.
   - `../config` importlari `@shared/config`ga o'tkazildi.
-  - `frontend/src/config.ts`, `frontend/src/types/index.ts`, `frontend/src/App.css` olib tashlandi.
-  - Bo'sh `frontend/src/components` va `frontend/src/types` papkalari olib tashlandi.
+  - `apps/frontend/src/config.ts`, `apps/frontend/src/types/index.ts`, `apps/frontend/src/App.css` olib tashlandi.
+  - Bo'sh `apps/frontend/src/components` va `apps/frontend/src/types` papkalari olib tashlandi.
 
 ## Phase 7 - Documentation finalization (DONE)
 - Scope:
@@ -193,12 +193,13 @@
   - Yangi regressiya topilmadi; `DELETE /schools/:id` pre-existing gap ekanligi (`HEAD~1` bilan) tasdiqlandi.
 
 ## Latest Verification
-- `npm run typecheck` (`frontend/`) - PASS
-- `npm run build` (`frontend/`) - PASS
-- `npm run lint` (`frontend/`) - PASS (warnings only)
-- `300-line scan` (`frontend/src/**/*.ts(x)`) - PASS
+- `npm run typecheck` (`apps/frontend/`) - PASS
+- `npm run build` (`apps/frontend/`) - PASS
+- `npm run lint` (`apps/frontend/`) - PASS (warnings only)
+- `300-line scan` (`apps/frontend/src/**/*.ts(x)`) - PASS
 - `npm run typecheck` (backend root) - PASS
 - `npm run build` (backend root) - PASS
 - `npm run lint` (backend root) - PASS
 - `npm test` (backend root) - PASS
+- `apps/frontend` relocation re-check (`typecheck/build/lint/300-line scan`) - PASS
 - Eslatma: Vite chunk-size warning saqlanib qolgan, lekin build muvaffaqiyatli yakunlangan.

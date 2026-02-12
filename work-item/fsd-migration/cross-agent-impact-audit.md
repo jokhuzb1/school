@@ -3,7 +3,7 @@
 ## Scope
 - Maqsad: backend agentlar kiritgan o'zgarishlar frontend FSD migratsiyaga ta'sir qilgan-qilmaganini tekshirish.
 - Tekshiruv sohasi:
-  - `frontend/src/**` API chaqiriqlari
+  - `apps/frontend/src/**` API chaqiriqlari
   - `src/modules/*/interfaces/http/*.routes.ts` backend endpointlari
   - `server.ts` va `src/app/server/*` route registratsiya wiring
   - `work-item/fsd-migration/**` hujjat qatlamlari
@@ -17,11 +17,11 @@
 - Route registration/prefixlar `src/app/server/create-server.ts`da saqlangan.
 
 ### 2) Frontend FSD qatlamiga to'g'ridan-to'g'ri ta'sir aniqlanmadi
-- `git status --short frontend` bo'yicha o'zgarish yo'q.
+- `git status --short apps/frontend` bo'yicha o'zgarish yo'q.
 - Frontend gate'lar PASS:
-  - `npm run typecheck` (`frontend`) PASS
-  - `npm run build` (`frontend`) PASS
-  - `npm run lint` (`frontend`) PASS (6 warning, oldingi holat bilan bir xil)
+  - `npm run typecheck` (`apps/frontend`) PASS
+  - `npm run build` (`apps/frontend`) PASS
+  - `npm run lint` (`apps/frontend`) PASS (6 warning, oldingi holat bilan bir xil)
   - `300-line scan` PASS
 
 ### 3) Endpoint contract diff (frontend vs backend)
@@ -44,6 +44,5 @@
 
 ## Conclusion
 - Hozirgi snapshot bo'yicha backend agentlar o'zgarishlari frontend FSD migratsiyani buzmagan.
-- Joriy risk: backend DDD tasklari hali `IN_PROGRESS` holatda, kelgusi commitlarda API contract drift paydo bo'lishi mumkin.
+- Joriy risk: keyingi backend commitlarda API contract drift paydo bo'lishi mumkin (ayniqsa `schools` delete flow bo'yicha follow-up ochiq).
 - Tavsiya: backend yakuniy bosqichdan keyin shu auditni qayta ishlatish (same-day contract recheck).
-
