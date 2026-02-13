@@ -1,0 +1,154 @@
+/* User Detail Modal */
+.user-detail-modal {
+  max-width: 940px;
+  max-height: 88vh;
+}
+
+.user-detail-modal-body {
+  padding-top: 16px;
+}
+
+.user-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 16px;
+  align-items: start;
+}
+
+.user-detail-main {
+  min-width: 0;
+}
+
+.user-detail-kv {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.user-detail-kv p {
+  margin: 0;
+}
+
+.user-detail-db-card {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--hover-bg);
+}
+
+.user-detail-db-card p {
+  margin: 0 0 6px;
+}
+
+.user-detail-db-card p:last-child {
+  margin-bottom: 0;
+}
+
+.user-detail-form {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.user-detail-form .form-group {
+  margin-bottom: 0;
+}
+
+.user-detail-form-wide {
+  grid-column: 1 / -1;
+}
+
+.user-detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.user-detail-image {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+}
+
+.user-detail-image-empty {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  border: 1px dashed var(--border-color);
+  background: var(--bg-color);
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  text-align: center;
+  padding: 12px;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .filter-bar {
+    flex-wrap: wrap;
+    padding: 1rem;
+  }
+
+  .filter-bar .form-group {
+    min-width: calc(50% - 0.5rem);
+  }
+
+  .user-detail-modal {
+    max-width: 720px;
+  }
+
+  .user-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .user-detail-side {
+    max-width: 220px;
+  }
+}
+
+@media (max-width: 700px) {
+  .students-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .students-pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .students-pagination-actions {
+    justify-content: space-between;
+  }
+
+  .diagnostics-popover {
+    left: auto;
+    right: 0;
+    width: min(360px, 90vw);
+  }
+}
+
+@media (max-width: 640px) {
+  .user-detail-kv,
+  .user-detail-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .user-detail-side {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .filter-bar .form-group {
+    min-width: 100%;
+  }
+}

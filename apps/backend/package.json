@@ -1,0 +1,60 @@
+{
+  "name": "backend",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/server.js",
+  "scripts": {
+    "predev": "npm run setup:mtx",
+    "dev": "npm run dev:raw",
+    "dev:raw": "nodemon --watch 'src/**' --ext ts --exec ts-node --transpile-only ./server.ts",
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint --ext .ts server.ts src prisma scripts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev --name init",
+    "db:diff": "powershell -ExecutionPolicy Bypass -File scripts/migrate-diff.ps1",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "set SEED_WIPE=false&& ts-node prisma/seed.ts",
+    "db:seed:reset": "set SEED_WIPE=true&& ts-node prisma/seed.ts",
+    "db:studio": "prisma studio", 
+    "db:seed:prod": "node dist/prisma/seed.js",
+    "setup:mtx": "ts-node scripts/setup-mediamtx.ts",
+    "excel:extract-images": "ts-node scripts/extract-excel-images.ts"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^8.5.0",
+    "@fastify/helmet": "^11.1.1",
+    "@fastify/jwt": "^7.0.0",
+    "@fastify/multipart": "^7.7.0",
+    "@fastify/rate-limit": "^9.1.0",
+    "@fastify/static": "^7.0.4",
+    "@prisma/client": "^5.0.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.0.0",
+    "exceljs": "^4.3.0",
+    "fastify": "^4.20.0",
+    "ioredis": "^5.3.2",
+    "jszip": "^3.10.1",
+    "node-cron": "^3.0.2",
+    "onvif": "^0.8.1",
+    "prisma": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.0.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.4",
+    "@typescript-eslint/parser": "^8.46.4",
+    "eslint": "^8.51.0",
+    "nodemon": "^2.0.22",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.4",
+    "vitest": "^1.6.1"
+  }
+}

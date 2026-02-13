@@ -1,0 +1,1 @@
+export { useSchool } from "./useSchool";

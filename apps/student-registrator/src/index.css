@@ -1,0 +1,15 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+/* Import new modular styles */
+@import "./styles/variables.css";
+@import "./styles/layout.css";
+@import "./styles/components.css";
+@import "./styles/table.css";
+@import "./styles/pages.css";
+@import "./styles/toast.css";
+
+@import "./styles/index/index-part-1.css";
+@import "./styles/index/index-part-2.css";
+@import "./styles/index/index-part-3.css";
+@import "./styles/index/index-part-4.css";
+@import "./styles/index/index-part-5.css";
