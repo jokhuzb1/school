@@ -33,7 +33,7 @@ export function createSchoolDashboardHandler(deps: DashboardHttpDeps) {
         period?: DateRangeType;
         startDate?: string;
         endDate?: string;
-        scope?: "started" | "active";
+        scope?: "started" | "active" | "all";
       };
       const user = request.user;
 
@@ -66,7 +66,8 @@ export function createSchoolDashboardHandler(deps: DashboardHttpDeps) {
         dateRange.startDate.getTime() === dateRange.endDate.getTime();
       const isToday =
         isSingleDay && dateRange.startDate.getTime() === today.getTime();
-      const attendanceScope = scope === "active" ? "active" : "started";
+      const attendanceScope =
+        scope === "active" || scope === "started" ? scope : "all";
 
       const classWhere: any = {
         schoolId,
@@ -111,7 +112,9 @@ export function createSchoolDashboardHandler(deps: DashboardHttpDeps) {
       const effectiveClassIds = isToday
         ? attendanceScope === "active"
           ? activeClassIds
-          : startedClassIds
+          : attendanceScope === "started"
+            ? startedClassIds
+            : scopedClassIds
         : scopedClassIds;
       const effectiveClassIdsWithFallback =
         isToday &&

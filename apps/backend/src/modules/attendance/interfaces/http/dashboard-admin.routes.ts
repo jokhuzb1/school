@@ -24,12 +24,13 @@ export function registerAdminDashboardRoutes(
 
         const now = new Date();
         const { scope, period, startDate, endDate } = request.query as {
-          scope?: "started" | "active";
+          scope?: "started" | "active" | "all";
           period?: DateRangeType;
           startDate?: string;
           endDate?: string;
         };
-        const attendanceScope = scope === "active" ? "active" : "started";
+        const attendanceScope =
+          scope === "active" || scope === "started" ? scope : "all";
         const periodType: DateRangeType = period || "today";
 
         const schools = await attendanceRepo.school.findMany({

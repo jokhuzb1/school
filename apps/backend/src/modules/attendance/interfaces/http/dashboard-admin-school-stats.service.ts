@@ -26,7 +26,7 @@ export async function buildAdminPerSchoolStats(params: {
   periodType: DateRangeType;
   startDate?: string;
   endDate?: string;
-  attendanceScope: "started" | "active";
+  attendanceScope: "started" | "active" | "all";
 }): Promise<AdminPerSchoolStats> {
   const { deps, school, now, periodType, startDate, endDate, attendanceScope } =
     params;
@@ -66,7 +66,9 @@ export async function buildAdminPerSchoolStats(params: {
   const effectiveClassIds = isToday
     ? attendanceScope === "active"
       ? activeClassIds
-      : startedClassIds
+      : attendanceScope === "started"
+        ? startedClassIds
+        : scopedClassIds
     : scopedClassIds;
   const effectiveClassIdsWithFallback =
     isToday && attendanceScope === "started" && effectiveClassIds.length === 0
